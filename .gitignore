@@ -49,4 +49,4 @@ htmlcov/
 Thumbs.db
 
 # Project-specific
-# .hermes/   # uncomment if you want to ignore local planning state
+.hermes/   # local planning / agent state (not part of the project)
