@@ -4,38 +4,50 @@ This file provides guidance for AI agents (and human contributors) working in th
 
 ## Project Overview
 
-**LMSR Prediction Market Simulator**
+**LMSR Prediction Market Engine** (core of an internal company forecasting / prediction market tool)
 
-A clean, educational implementation of Robin Hanson's Logarithmic Market Scoring Rule (LMSR) for **binary** (Yes/No) prediction markets.
+This repository implements the mathematical heart of a prediction market system as detailed in the primary design conversation:
 
-- Automated liquidity via the LMSR cost function
-- Built-in 2% market-maker fee
-- User position tracking (independent of aggregate `q`)
-- Instantaneous price impact and slippage estimators
-- Resolution P/L calculation for the market maker
-- Interactive Streamlit demo (`app.py`)
+**Primary source of truth**: [DESIGN.md](./DESIGN.md) — full transcript of the detailed design discussion covering LMSR vs other mechanisms, numerical stability, resolution accounting, calibration scoring (Brier + log score), dynamic liquidity, database schema, atomic trade execution, and the long-term vision for an internal tool.
 
-**Core reference**: Robin Hanson’s LMSR papers and the standard formulation `C(q) = b * log(exp(q_yes/b) + exp(q_no/b))`.
+The current focus is a high-quality, numerically stable **BinaryLMSRMarket** engine that can later be embedded into a larger system (DB-backed API, scoring layer, UI, etc.).
 
-**Current maturity**: Core engine + demo UI functional. Packaging, tests, examples, and docs are still minimal.
+Key properties implemented (per the spec):
+- LMSR cost function with log-sum-exp stability (`np.logaddexp`)
+- Configurable liquidity parameter `b`
+- Separate user position ledger (enforces non-negative holdings)
+- Built-in market-maker fee
+- Instantaneous impact + slippage preview (critical for good UX)
+- Resolution with market-maker P/L and accounting identity
+- Play-money friendly (easy to add real balances later)
+
+**Core math reference** (from the conversation):
+- `C(q) = b · ln(Σ exp(qᵢ / b))`
+- Prices via stable softmax
+- Trade cost computed to avoid catastrophic cancellation on small deltas
+
+**Current maturity**: Solid, tested-in-practice core LMSR engine + Streamlit prototype. Full system (DB schema, calibration leaderboard, API, multi-outcome, dynamic b) is the longer-term target described in `DESIGN.md`.
 
 ## Repository Layout
 
 ```
 /home/bob/Projects/test
-├── app.py                 # Streamlit UI (entry point for demo)
+├── DESIGN.md          # PRIMARY DESIGN SOURCE — full Claude conversation with detailed math + architecture spec
+├── AGENTS.md              # This steering file (how to work in the repo)
+├── app.py                 # Streamlit prototype UI for the LMSR engine
 ├── src/
 │   └── lmsr/
-│       └── market.py      # Core `BinaryLMSRMarket` implementation (single source of truth)
-├── tests/                 # pytest suite (empty — add tests here)
-├── examples/              # Experiment scripts, notebooks, CLI demos (empty)
-├── .hermes/plans/         # Historical implementation plans (read-only reference)
-├── .venv/                 # Project virtual environment (Python 3.12 + numpy + streamlit)
-├── .git/
-└── AGENTS.md              # This file
+│       └── market.py      # Core `BinaryLMSRMarket` — the numerically stable engine
+├── tests/                 # pytest suite (priority area)
+├── examples/              # Experiment scripts, simulations, notebooks
+├── .hermes/plans/         # Old implementation plans (reference only)
+├── .venv/
+└── .git/
 ```
 
 **Do not** commit or edit anything inside `.venv/`.
+
+**Always read `DESIGN.md` (at least the relevant sections) before making significant changes to the market math or architecture.**
 
 ## Running the Project
 
