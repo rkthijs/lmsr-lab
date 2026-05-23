@@ -188,6 +188,9 @@ def test_accounting_identity_after_resolution():
     assert bool(accounting["is_valid"]) is True
     assert bool(accounting["payouts_match_engine"]) is True
     assert bool(accounting["pl_match"]) is True
+    assert "remainder" in accounting
+    assert "initial_subsidy" in accounting
+    assert accounting["initial_subsidy"] == 0.0
 
 
 def test_accounting_identity_with_subsidy():
@@ -202,6 +205,11 @@ def test_accounting_identity_with_subsidy():
     accounting = result.get("accounting_identity")
     assert bool(accounting["is_valid"]) is True
     assert bool(accounting["payouts_match_engine"]) is True
+    assert "remainder" in accounting
+    assert accounting["initial_subsidy"] == 50.0
+    # remainder = 50 + revenue - payout; payout will be ~20 (winning shares)
+    # we just ensure the field is present and numeric (exact value depends on b/fees)
+    assert isinstance(accounting["remainder"], (int, float))
 
 
 # ------------------------------------------------------------------

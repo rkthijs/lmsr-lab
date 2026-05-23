@@ -223,6 +223,24 @@ class LMSRMarketSimulator:
             return list(self.markets.values())
         return [m for m in self.markets.values() if m.status == status]
 
+    def close_market(self, market_id: str) -> dict[str, Any]:
+        """
+        Close a market to new trading (but not yet resolved).
+
+        Once closed, no new trades are allowed. This is a common step before
+        official resolution in real prediction market systems.
+        """
+        market = self.get_market(market_id)
+
+        if market.status != "open":
+            return {
+                "error": f"Cannot close a market that is {market.status}",
+                "market_status": market.status,
+            }
+
+        market.status = "closed"
+        return {"success": True, "market_id": market_id, "status": "closed"}
+
     # ------------------------------------------------------------------
     # User Management (improved model per DESIGN.md)
     # ------------------------------------------------------------------
@@ -443,9 +461,25 @@ class LMSRMarketSimulator:
         """
         Perform accounting and consistency checks after resolution.
 
+        Implements the critical invariant from DESIGN.md (the market_accounting
+        view):
+
+            remainder = subsidy + total_revenue_from_trades - total_payouts
+
         Verifies:
-        - Recorded payouts match the winning shares the engine thinks exist.
-        - Market maker P/L from engine matches (total_revenue - total_payouts).
+        - Recorded payouts exactly match the winning shares outstanding in the
+          engine (q[winning]). This is the primary correctness check: it proves
+          the payout records and balance credits are faithful to what was sold.
+        - For backward compatibility, also checks that two ways of computing
+          the market maker P/L agree (they will when the above holds).
+
+        The `remainder` (and `initial_subsidy`) are always returned so callers
+        can audit the house P/L on the market. Per LMSR math, remainder is
+        *not* required to be zero — it is the realized profit/loss for the
+        market operator after fees and resolution. It will be small only in
+        the limit of well-calibrated traders + no subsidy.
+
+        See DESIGN.md "The Critical Invariant: Accounting".
         """
         market = self.get_market(market_id)
 
@@ -461,6 +495,9 @@ class LMSRMarketSimulator:
         engine_pl = market.engine.total_revenue - winning_shares_engine
         calculated_pl = market.engine.total_revenue - total_payouts
 
+        subsidy = market.initial_subsidy
+        remainder = subsidy + market.engine.total_revenue - total_payouts
+
         tolerance = 1e-6
         payout_match = abs(total_payouts - winning_shares_engine) <= tolerance
         pl_match = abs(engine_pl - calculated_pl) <= tolerance
@@ -474,6 +511,8 @@ class LMSRMarketSimulator:
             "engine_pl": engine_pl,
             "calculated_pl_from_payouts": calculated_pl,
             "pl_match": pl_match,
+            "initial_subsidy": subsidy,
+            "remainder": remainder,
             "is_valid": payout_match and pl_match,
             "tolerance": tolerance,
         }
@@ -536,6 +575,13 @@ class LMSRMarketSimulator:
         Handles balance checks and updates (as specified in DESIGN.md).
         """
         market = self.get_market(market_id)
+
+        if market.status != "open":
+            return {
+                "error": f"Cannot trade on a {market.status} market",
+                "market_status": market.status,
+            }
+
         engine = market.engine
 
         effective_cost, raw_cost = engine.quote(shares_yes, shares_no)
@@ -701,7 +747,8 @@ class LMSRMarketSimulator:
 
         if not accounting["is_valid"]:
             result["accounting_warning"] = (
-                f"Accounting identity violated! remainder={accounting['remainder']:.8f}"
+                f"Accounting identity violated! payout mismatch detected. "
+                f"remainder={accounting['remainder']:.8f}"
             )
 
     # ------------------------------------------------------------------
