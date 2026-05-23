@@ -22,10 +22,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+import pickle
+from pathlib import Path
+
 import numpy as np
 
 from .market import BinaryLMSRMarket
-from .scoring import brier_score  # available for future wiring
+from .scoring import brier_score, log_score
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,7 @@ class Trade:
     This is the atomic unit of history. In a real system this would map
     directly to a row in the `trades` table (see DESIGN.md schema).
     """
+    id: str                     # stable identifier for linking scores, etc.
     market_id: str
     timestamp: datetime
     user_id: str
@@ -47,6 +51,67 @@ class Trade:
     price_after_yes: float
     price_after_no: float
     market_q_after: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class Payout:
+    """
+    Immutable record of a payout made on market resolution.
+
+    One record per user per resolved market (as described in DESIGN.md).
+    """
+    market_id: str
+    user_id: str
+    amount: float
+    outcome: str          # "yes" or "no"
+    timestamp: datetime
+
+
+@dataclass(frozen=True)
+class Score:
+    """
+    Stored calibration score for a specific forecast (trade) after resolution.
+
+    Mirrors the `scores` table design from DESIGN.md.
+    """
+    market_id: str
+    user_id: str
+    trade_id: str
+    forecast_prob: float      # p_yes at the time the trade was made
+    outcome: float            # 1.0 for Yes, 0.0 for No
+    brier_score: float
+    log_score: float
+    timestamp: datetime
+
+
+@dataclass
+class User:
+    """
+    Represents a user in the prediction market system.
+
+    This is the improved user model (as discussed from DESIGN.md).
+    It holds identity + balance, and enables richer portfolio views.
+    """
+    id: str
+    balance: float = 1000.0
+    display_name: str | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass
+class UserPortfolio:
+    """
+    Aggregated view of everything a user has across all markets.
+
+    This is the main deliverable of the "better user model".
+    """
+    user_id: str
+    balance: float
+    positions: dict[str, dict[str, float]]   # market_id -> {"yes": x, "no": y, "total": x+y}
+    realized_pnl: float
+    total_payouts_received: float
+    open_markets_count: int
+    resolved_markets_count: int
 
 
 @dataclass
@@ -65,6 +130,7 @@ class Market:
     resolution_criteria: str = ""
     b: float = 20.0
     fee_rate: float = 0.02
+    initial_subsidy: float = 0.0  # Market maker's initial capital/subsidy for this market
     status: str = "open"          # "open", "closed", "resolved"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     close_at: datetime | None = None
@@ -74,6 +140,8 @@ class Market:
     # Internal state
     engine: BinaryLMSRMarket = field(init=False, repr=False)
     trades: list[Trade] = field(default_factory=list, repr=False)
+    payouts: list[Payout] = field(default_factory=list, repr=False)
+    scores: list[Score] = field(default_factory=list, repr=False)
 
     def __post_init__(self):
         self.engine = BinaryLMSRMarket(b=self.b, fee_rate=self.fee_rate)
@@ -87,8 +155,10 @@ class LMSRMarketSimulator:
     in DESIGN.md. It supports:
 
     - Multiple independent markets
-    - Per-market immutable trade logs
+    - Per-market immutable trade logs + payout records
     - Positions derived from trade history (per market)
+    - Improved User model with balances and cross-market Portfolio views
+    - Global leaderboard based on calibration (Brier/Log) and realized P/L
     - Clean separation between market metadata and the mathematical engine
 
     Usage example:
@@ -102,6 +172,8 @@ class LMSRMarketSimulator:
         self._next_market_id = 1
         # Per-market position caches
         self._positions_cache: dict[str, dict[str, np.ndarray]] = {}
+        # Improved user model (replaces flat balance dict)
+        self.users: dict[str, User] = {}
 
     # ------------------------------------------------------------------
     # Market Management
@@ -114,6 +186,7 @@ class LMSRMarketSimulator:
         resolution_criteria: str = "",
         b: float = 20.0,
         fee_rate: float = 0.02,
+        initial_subsidy: float = 0.0,
         close_at: datetime | None = None,
     ) -> Market:
         """
@@ -131,6 +204,7 @@ class LMSRMarketSimulator:
             resolution_criteria=resolution_criteria,
             b=b,
             fee_rate=fee_rate,
+            initial_subsidy=initial_subsidy,
             close_at=close_at,
         )
         self.markets[market_id] = market
@@ -150,6 +224,271 @@ class LMSRMarketSimulator:
         return [m for m in self.markets.values() if m.status == status]
 
     # ------------------------------------------------------------------
+    # User Management (improved model per DESIGN.md)
+    # ------------------------------------------------------------------
+
+    def get_or_create_user(self, user_id: str, display_name: str | None = None) -> User:
+        """Get existing user or create a new one with default balance."""
+        if user_id not in self.users:
+            self.users[user_id] = User(
+                id=user_id,
+                display_name=display_name or user_id,
+            )
+        return self.users[user_id]
+
+    def get_user(self, user_id: str) -> User:
+        """Get a user (creates with default balance if missing)."""
+        return self.get_or_create_user(user_id)
+
+    def get_balance(self, user_id: str) -> float:
+        """Return current balance for a user."""
+        return self.get_user(user_id).balance
+
+    def _adjust_balance(self, user_id: str, amount: float) -> None:
+        """Internal: credit or debit a user's balance."""
+        user = self.get_user(user_id)
+        user.balance += amount
+
+    def get_payouts(self, market_id: str) -> list[Payout]:
+        """Return all payout records for a given market."""
+        market = self.get_market(market_id)
+        return list(market.payouts)
+
+    def get_user_payouts(self, user_id: str) -> list[Payout]:
+        """Return all payouts ever made to a specific user across markets."""
+        payouts = []
+        for market in self.markets.values():
+            for p in market.payouts:
+                if p.user_id == user_id:
+                    payouts.append(p)
+        return payouts
+
+    def get_scores(self, market_id: str) -> list[Score]:
+        """Return all stored calibration scores for a given market."""
+        market = self.get_market(market_id)
+        return list(market.scores)
+
+    def get_user_scores(self, user_id: str) -> list[Score]:
+        """Return all calibration scores for a specific user across all markets."""
+        scores = []
+        for market in self.markets.values():
+            for s in market.scores:
+                if s.user_id == user_id:
+                    scores.append(s)
+        return scores
+
+    # ------------------------------------------------------------------
+    # Global Leaderboard (based on scores + realized P/L)
+    # ------------------------------------------------------------------
+
+    def get_leaderboard(
+        self,
+        metric: str = "brier",
+        min_resolved_trades: int = 1,
+    ) -> list[dict]:
+        """
+        Compute a global leaderboard across all resolved markets.
+
+        Supported metrics:
+            - "brier"   : lower is better (best calibration)
+            - "log"     : higher is better (better log score)
+            - "pnl"     : higher is better (realized profit/loss from resolutions)
+
+        Only users with at least `min_resolved_trades` resolved trades are included.
+        """
+        # Collect data per user from resolved markets
+        user_data: dict[str, dict] = {}
+
+        for market in self.markets.values():
+            if market.status != "resolved":
+                continue
+
+            # Scores for this market
+            for score in market.scores:
+                uid = score.user_id
+                if uid not in user_data:
+                    user_data[uid] = {
+                        "brier_scores": [],
+                        "log_scores": [],
+                        "resolved_trades": 0,
+                        "pnl": 0.0,
+                    }
+                user_data[uid]["brier_scores"].append(score.brier_score)
+                user_data[uid]["log_scores"].append(score.log_score)
+                user_data[uid]["resolved_trades"] += 1
+
+            # Payouts for realized P/L
+            for payout in market.payouts:
+                uid = payout.user_id
+                if uid not in user_data:
+                    user_data[uid] = {
+                        "brier_scores": [],
+                        "log_scores": [],
+                        "resolved_trades": 0,
+                        "pnl": 0.0,
+                    }
+                user_data[uid]["pnl"] += payout.amount
+
+        # Filter and build leaderboard entries
+        leaderboard = []
+        for uid, data in user_data.items():
+            resolved = data["resolved_trades"]
+            if resolved < min_resolved_trades:
+                continue
+
+            avg_brier = sum(data["brier_scores"]) / len(data["brier_scores"])
+            avg_log = sum(data["log_scores"]) / len(data["log_scores"])
+
+            entry = {
+                "user_id": uid,
+                "resolved_trades": resolved,
+                "avg_brier": round(avg_brier, 4),
+                "avg_log_score": round(avg_log, 4),
+                "total_pnl": round(data["pnl"], 2),
+            }
+            leaderboard.append(entry)
+
+        # Sort according to metric
+        if metric == "brier":
+            leaderboard.sort(key=lambda x: (x["avg_brier"], -x["total_pnl"]))
+        elif metric == "log":
+            leaderboard.sort(key=lambda x: (-x["avg_log_score"], -x["total_pnl"]))
+        elif metric == "pnl":
+            leaderboard.sort(key=lambda x: (-x["total_pnl"], x["avg_brier"]))
+        else:
+            raise ValueError(f"Unsupported leaderboard metric: {metric}")
+
+        return leaderboard
+
+    def get_user_portfolio(self, user_id: str) -> UserPortfolio:
+        """
+        Return a rich aggregated view of everything the user has.
+
+        This is the main benefit of the improved User model.
+        """
+        user = self.get_user(user_id)
+
+        positions: dict[str, dict[str, float]] = {}
+        realized_pnl = 0.0
+        total_payouts = 0.0
+        open_count = 0
+        resolved_count = 0
+
+        for market in self.markets.values():
+            pos = self.get_user_position(market.id, user_id)
+            positions[market.id] = {
+                "yes": pos[0],
+                "no": pos[1],
+                "total": pos[0] + pos[1],
+            }
+
+            if market.status == "resolved":
+                resolved_count += 1
+                # Add payouts this user received from this market
+                for p in market.payouts:
+                    if p.user_id == user_id:
+                        total_payouts += p.amount
+                        # Simple realized P/L approximation:
+                        # positive payout on winning side is "win"
+                        realized_pnl += p.amount
+            else:
+                open_count += 1
+
+        return UserPortfolio(
+            user_id=user_id,
+            balance=user.balance,
+            positions=positions,
+            realized_pnl=realized_pnl,
+            total_payouts_received=total_payouts,
+            open_markets_count=open_count,
+            resolved_markets_count=resolved_count,
+        )
+
+    # ------------------------------------------------------------------
+    # Accounting Identity (critical invariant from DESIGN.md)
+    # ------------------------------------------------------------------
+
+    def check_accounting_identity(self, market_id: str) -> dict:
+        """
+        Perform accounting and consistency checks after resolution.
+
+        Verifies:
+        - Recorded payouts match the winning shares the engine thinks exist.
+        - Market maker P/L from engine matches (total_revenue - total_payouts).
+        """
+        market = self.get_market(market_id)
+
+        if market.status != "resolved":
+            return {"market_id": market_id, "error": "Market not resolved yet"}
+
+        winning = market.resolution_outcome
+        idx = 0 if winning == "yes" else 1
+
+        winning_shares_engine = market.engine.q[idx]
+        total_payouts = sum(p.amount for p in market.payouts)
+
+        engine_pl = market.engine.total_revenue - winning_shares_engine
+        calculated_pl = market.engine.total_revenue - total_payouts
+
+        tolerance = 1e-6
+        payout_match = abs(total_payouts - winning_shares_engine) <= tolerance
+        pl_match = abs(engine_pl - calculated_pl) <= tolerance
+
+        return {
+            "market_id": market_id,
+            "winning_outcome": winning,
+            "winning_shares_engine": winning_shares_engine,
+            "total_payouts_recorded": total_payouts,
+            "payouts_match_engine": payout_match,
+            "engine_pl": engine_pl,
+            "calculated_pl_from_payouts": calculated_pl,
+            "pl_match": pl_match,
+            "is_valid": payout_match and pl_match,
+            "tolerance": tolerance,
+        }
+
+    # ------------------------------------------------------------------
+    # Persistence (save / load simulator state)
+    # ------------------------------------------------------------------
+
+    def save(self, filepath: str | Path) -> None:
+        """
+        Persist the entire simulator state to disk using pickle.
+
+        Saves markets (with engines, trades, payouts), user balances,
+        and internal counters.
+
+        Caches are cleared before saving (they will be lazily rebuilt).
+        """
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Clear derived caches before saving
+        self._positions_cache.clear()
+
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, filepath: str | Path) -> "LMSRMarketSimulator":
+        """
+        Load a previously saved simulator from disk.
+        """
+        path = Path(filepath)
+        if not path.exists():
+            raise FileNotFoundError(f"No simulator state found at {path}")
+
+        with open(path, "rb") as f:
+            sim: "LMSRMarketSimulator" = pickle.load(f)
+
+        # Make sure caches exist and are clean after loading
+        if not hasattr(sim, "_positions_cache"):
+            sim._positions_cache = {}
+        sim._positions_cache.clear()
+
+        return sim
+
+    # ------------------------------------------------------------------
     # Trading
     # ------------------------------------------------------------------
 
@@ -163,21 +502,38 @@ class LMSRMarketSimulator:
         """
         Place a trade in a specific market.
 
-        Records an immutable Trade and updates the market's engine.
+        Handles balance checks and updates (as specified in DESIGN.md).
         """
         market = self.get_market(market_id)
         engine = market.engine
 
         effective_cost, raw_cost = engine.quote(shares_yes, shares_no)
 
+        # Balance check (only for positive cost trades)
+        if effective_cost > 0:
+            balance = self.get_balance(user_id)
+            if balance < effective_cost:
+                return {
+                    "error": "Insufficient balance",
+                    "current_balance": balance,
+                    "required": effective_cost,
+                }
+
         result = engine.trade(user_id, shares_yes, shares_no)
 
         if "error" in result:
             return result
 
+        # Deduct / credit balance
+        self._adjust_balance(user_id, -effective_cost)
+
         p_yes, p_no = result["new_prices"]
 
+        # Generate a stable trade id
+        trade_id = f"{market_id}-t{len(market.trades)}"
+
         trade = Trade(
+            id=trade_id,
             market_id=market_id,
             timestamp=datetime.now(timezone.utc),
             user_id=user_id,
@@ -256,18 +612,69 @@ class LMSRMarketSimulator:
         """
         Resolve a market to 'yes' or 'no'.
 
-        Updates the market status and records the outcome.
-        In a more complete version this would also compute scores.
+        Creates explicit immutable Payout records for every user who held
+        the winning outcome (1:1 payout) and credits their balance.
+        This follows the resolution + payouts model from DESIGN.md.
         """
         market = self.get_market(market_id)
         if market.status != "open":
             raise ValueError(f"Market {market_id} is already {market.status}")
 
         result = market.engine.resolve(outcome)
+        winning = outcome.lower()
+        idx = 0 if winning == "yes" else 1
+
+        payout_timestamp = datetime.now(timezone.utc)
+        users = set(t.user_id for t in market.trades)
+
+        # 1. Create payouts and credit balances
+        for user in users:
+            pos = self.get_user_position(market_id, user)
+            amount = pos[idx]
+
+            if amount > 0:
+                payout = Payout(
+                    market_id=market_id,
+                    user_id=user,
+                    amount=amount,
+                    outcome=winning,
+                    timestamp=payout_timestamp,
+                )
+                market.payouts.append(payout)
+                self._adjust_balance(user, amount)
+
+        # 2. Compute and store calibration scores for every trade
+        outcome_value = 1.0 if winning == "yes" else 0.0
+
+        for trade in market.trades:
+            forecast = trade.price_after_yes
+            brier = float(brier_score([forecast], [outcome_value])[0])
+            log_s = float(log_score([forecast], [outcome_value])[0])
+
+            score = Score(
+                market_id=market_id,
+                user_id=trade.user_id,
+                trade_id=trade.id,
+                forecast_prob=forecast,
+                outcome=outcome_value,
+                brier_score=brier,
+                log_score=log_s,
+                timestamp=payout_timestamp,
+            )
+            market.scores.append(score)
 
         market.status = "resolved"
-        market.resolution_outcome = outcome.lower()
-        market.resolved_at = datetime.now(timezone.utc)
+        market.resolution_outcome = winning
+        market.resolved_at = payout_timestamp
+
+        # Run the critical accounting identity check after resolution
+        accounting = self.check_accounting_identity(market_id)
+        result["accounting_identity"] = accounting
+
+        if not accounting["is_valid"]:
+            result["accounting_warning"] = (
+                f"Accounting identity violated! remainder={accounting['remainder']:.8f}"
+            )
 
         return result
 
@@ -276,10 +683,12 @@ class LMSRMarketSimulator:
     # ------------------------------------------------------------------
 
     def reset_market(self, market_id: str) -> None:
-        """Reset a single market (engine + trades)."""
+        """Reset a single market (engine + trades + payouts + scores)."""
         market = self.get_market(market_id)
         market.engine = BinaryLMSRMarket(b=market.b, fee_rate=market.fee_rate)
         market.trades.clear()
+        market.payouts.clear()
+        market.scores.clear()
         market.status = "open"
         market.resolution_outcome = None
         market.resolved_at = None
