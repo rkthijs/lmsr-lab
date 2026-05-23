@@ -1,46 +1,631 @@
 {
   "name": "Very Long Gradual Trend",
-  "description": "40 small consistent Yes buys. Shows how low b lets the price run away dramatically over a long period, while high b keeps movement very slow.",
+  "description": "40 small consistent Yes buys. Shows how low b lets the price run away dramatically over a long period, while high b keeps movement very slow. (extended to >100 trades with sells)",
   "trades": [
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0}
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": -8,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": -28,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u2",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": -4,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": -25,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": -10
+    },
+    {
+      "user": "u2",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 9
+    },
+    {
+      "user": "u2",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 9
+    },
+    {
+      "user": "u2",
+      "yes": -29,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": -9,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": -16
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "u4",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "u1",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": -9,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "u1",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "u3",
+      "yes": -12,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": -9
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": -21
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": -22
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": -20
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u3",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "u2",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": -17
+    },
+    {
+      "user": "u5",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u5",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u5",
+      "yes": -41,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": -20
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "u1",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "u3",
+      "yes": -19,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "u1",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": -41,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": -38
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 8
+    }
   ]
 }

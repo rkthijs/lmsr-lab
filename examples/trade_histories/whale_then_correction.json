@@ -1,26 +1,531 @@
 {
   "name": "Whale Then Correction",
-  "description": "One very large early buy followed by several trades trying to push the price back. Highlights how low b makes recovery extremely difficult after a whale trade.",
+  "description": "One very large early buy followed by several trades trying to push the price back. Highlights how low b makes recovery extremely difficult after a whale trade. (extended to >100 trades with sells)",
   "trades": [
-    {"user": "whale",    "yes": 40, "no": 0},
-    {"user": "alice",    "yes": 0,  "no": 8},
-    {"user": "bob",      "yes": 0,  "no": 7},
-    {"user": "charlie",  "yes": 0,  "no": 6},
-    {"user": "diana",    "yes": 0,  "no": 5},
-    {"user": "eve",      "yes": 0,  "no": 5},
-    {"user": "frank",    "yes": 0,  "no": 4},
-    {"user": "alice",    "yes": 3,  "no": 0},
-    {"user": "bob",      "yes": 0,  "no": 4},
-    {"user": "charlie",  "yes": 2,  "no": 0},
-    {"user": "diana",    "yes": 0,  "no": 3},
-    {"user": "eve",      "yes": 1,  "no": 0},
-    {"user": "frank",    "yes": 2,  "no": 0},
-    {"user": "alice",    "yes": 0,  "no": 3},
-    {"user": "bob",      "yes": 3,  "no": 0},
-    {"user": "charlie",  "yes": 0,  "no": 2},
-    {"user": "diana",    "yes": 1,  "no": 0},
-    {"user": "eve",      "yes": 0,  "no": 4},
-    {"user": "frank",    "yes": 2,  "no": 0},
-    {"user": "alice",    "yes": 0,  "no": 2}
+    {
+      "user": "whale",
+      "yes": 40,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "alice",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "charlie",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "eve",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "bob",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 2
+    },
+    {
+      "user": "diana",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "frank",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 2
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "diana",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": -8
+    },
+    {
+      "user": "frank",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": -1,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "whale",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "diana",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "charlie",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": -4
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": -5
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": -8
+    },
+    {
+      "user": "frank",
+      "yes": -19,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "bob",
+      "yes": -3,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "charlie",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "frank",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "eve",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "charlie",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": -20
+    },
+    {
+      "user": "eve",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": -37
+    },
+    {
+      "user": "frank",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "diana",
+      "yes": -22,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": -11,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "frank",
+      "yes": -17,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": -22
+    },
+    {
+      "user": "diana",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": -18
+    },
+    {
+      "user": "frank",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": -17,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "charlie",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "charlie",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": -7
+    },
+    {
+      "user": "charlie",
+      "yes": -27,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "whale",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "bob",
+      "yes": -7,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "charlie",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "charlie",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "eve",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": -8
+    },
+    {
+      "user": "frank",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "whale",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "bob",
+      "yes": -5,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "whale",
+      "yes": -43,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "diana",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "whale",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": -15,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 11
+    }
   ]
 }

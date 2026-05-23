@@ -1,29 +1,546 @@
 {
   "name": "Long Rug with Fake Volume",
-  "description": "Two controlled accounts (whaleA and whaleB) trade back and forth to create the illusion of organic volume and pump the price over many steps, then both dump together. Classic coordinated rug pattern.",
+  "description": "Two controlled accounts (whaleA and whaleB) trade back and forth to create the illusion of organic volume and pump the price over many steps, then both dump together. Classic coordinated rug pattern. (extended to >100 trades with sells)",
   "trades": [
-    {"user": "whaleA", "yes": 2, "no": 0},
-    {"user": "whaleB", "yes": 0, "no": 1},
-    {"user": "whaleA", "yes": 3, "no": 0},
-    {"user": "whaleB", "yes": 0, "no": 2},
-    {"user": "retail1", "yes": 1, "no": 0},
-    {"user": "whaleA", "yes": 4, "no": 0},
-    {"user": "whaleB", "yes": 0, "no": 2},
-    {"user": "retail2", "yes": 2, "no": 0},
-    {"user": "whaleA", "yes": 3, "no": 0},
-    {"user": "whaleB", "yes": 0, "no": 3},
-    {"user": "retail3", "yes": 2, "no": 0},
-    {"user": "whaleA", "yes": 5, "no": 0},
-    {"user": "whaleB", "yes": 0, "no": 2},
-    {"user": "retail1", "yes": 3, "no": 0},
-    {"user": "whaleA", "yes": 4, "no": 0},
-    {"user": "whaleB", "yes": 0, "no": 4},
-    {"user": "retail4", "yes": 2, "no": 0},
-    {"user": "whaleA", "yes": 0, "no": 0},
-    {"user": "whaleB", "yes": 0, "no": 0},
-    {"user": "whaleA", "yes": -18, "no": 0},
-    {"user": "whaleB", "yes": -12, "no": 0},
-    {"user": "retail2", "yes": 0, "no": 5},
-    {"user": "retail3", "yes": 0, "no": 4}
+    {
+      "user": "whaleA",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 1
+    },
+    {
+      "user": "whaleA",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 2
+    },
+    {
+      "user": "retail1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 2
+    },
+    {
+      "user": "retail2",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "retail3",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 2
+    },
+    {
+      "user": "retail1",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "retail4",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 0,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": -18,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": -12,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "retail3",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "retail4",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "whaleA",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "retail3",
+      "yes": -2,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": -10
+    },
+    {
+      "user": "retail1",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": -7,
+      "no": 0
+    },
+    {
+      "user": "retail3",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "retail3",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "retail3",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 0,
+      "no": -5
+    },
+    {
+      "user": "retail2",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "retail3",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "retail2",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": -18,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "retail3",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": -24,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": -10,
+      "no": 0
+    },
+    {
+      "user": "retail1",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "retail1",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "retail2",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "retail1",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "retail1",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "retail1",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "whaleA",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "retail3",
+      "yes": -22,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": -26
+    },
+    {
+      "user": "retail2",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "retail1",
+      "yes": 0,
+      "no": -4
+    },
+    {
+      "user": "whaleB",
+      "yes": -17,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "retail1",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "whaleA",
+      "yes": -10,
+      "no": 0
+    },
+    {
+      "user": "retail1",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "whaleB",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "retail3",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "whaleA",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "retail3",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "whaleA",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "retail4",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "retail4",
+      "yes": -8,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "whaleB",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "retail2",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "retail1",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "retail1",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "retail1",
+      "yes": 0,
+      "no": -25
+    },
+    {
+      "user": "whaleA",
+      "yes": -27,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "retail2",
+      "yes": -29,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": -25
+    },
+    {
+      "user": "retail1",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "retail4",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "whaleB",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "retail3",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "retail1",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "retail2",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "retail2",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "whaleA",
+      "yes": 0,
+      "no": -17
+    },
+    {
+      "user": "retail4",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "whaleA",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "retail3",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "retail2",
+      "yes": -15,
+      "no": 0
+    },
+    {
+      "user": "retail2",
+      "yes": 3,
+      "no": 0
+    }
   ]
 }

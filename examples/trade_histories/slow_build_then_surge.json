@@ -1,28 +1,541 @@
 {
   "name": "Slow Build Then Surge",
-  "description": "Many small buys over time followed by a few large directional trades. Useful for seeing how accumulated volume interacts with different b values when a surge occurs late.",
+  "description": "Many small buys over time followed by a few large directional trades. Useful for seeing how accumulated volume interacts with different b values when a surge occurs late. (extended to >100 trades with sells)",
   "trades": [
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 1, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 1, "no": 0},
-    {"user": "u6", "yes": 2, "no": 0},
-    {"user": "u3", "yes": 1, "no": 0},
-    {"user": "u4", "yes": 1, "no": 0},
-    {"user": "u5", "yes": 2, "no": 0},
-    {"user": "u7", "yes": 2, "no": 0},
-    {"user": "u1", "yes": 1, "no": 0},
-    {"user": "u2", "yes": 3, "no": 0},
-    {"user": "u6", "yes": 2, "no": 0},
-    {"user": "u8", "yes": 8, "no": 0},
-    {"user": "u3", "yes": 6, "no": 0},
-    {"user": "u4", "yes": 0, "no": 4},
-    {"user": "u5", "yes": 5, "no": 0},
-    {"user": "u7", "yes": 3, "no": 0},
-    {"user": "u1", "yes": 2, "no": 0},
-    {"user": "u2", "yes": 0, "no": 3}
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "u7",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 1,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "u8",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u5",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "u7",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": -4
+    },
+    {
+      "user": "u5",
+      "yes": -8,
+      "no": 0
+    },
+    {
+      "user": "u7",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "u2",
+      "yes": -5,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "u6",
+      "yes": -4,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": -8,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u6",
+      "yes": 0,
+      "no": -5
+    },
+    {
+      "user": "u5",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "u8",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "u8",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "u5",
+      "yes": -17,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 0,
+      "no": 9
+    },
+    {
+      "user": "u6",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u5",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "u4",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "u5",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "u8",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "u5",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "u7",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "u8",
+      "yes": -17,
+      "no": 0
+    },
+    {
+      "user": "u8",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "u7",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "u2",
+      "yes": -7,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": -20
+    },
+    {
+      "user": "u5",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": -17,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "u8",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "u7",
+      "yes": 0,
+      "no": -11
+    },
+    {
+      "user": "u8",
+      "yes": 0,
+      "no": -5
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "u6",
+      "yes": 0,
+      "no": -28
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u1",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "u8",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "u8",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "u4",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": -8,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u6",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": -21
+    },
+    {
+      "user": "u5",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": -19
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "u1",
+      "yes": 0,
+      "no": -8
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": -6
+    },
+    {
+      "user": "u8",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "u4",
+      "yes": -12,
+      "no": 0
+    },
+    {
+      "user": "u1",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u4",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "u8",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u4",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "u2",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": -9,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "u8",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "u3",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u1",
+      "yes": -9,
+      "no": 0
+    },
+    {
+      "user": "u2",
+      "yes": 3,
+      "no": 0
+    },
+    {
+      "user": "u6",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "u5",
+      "yes": 0,
+      "no": 9
+    },
+    {
+      "user": "u7",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "u3",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "u7",
+      "yes": 3,
+      "no": 0
+    }
   ]
 }

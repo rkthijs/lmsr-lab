@@ -1,6 +1,6 @@
 {
   "name": "Kelly Long Gradual Trend",
-  "description": "Many Kelly bettors with moderately bullish beliefs slowly push the price over a long period (40 trades).",
+  "description": "Many Kelly bettors with moderately bullish beliefs slowly push the price over a long period. Includes sells for realism.",
   "market_params": {
     "b": 50.0,
     "initial_subsidy": 1000.0,
@@ -8,183 +8,573 @@
   },
   "trades": [
     {
-      "user": "user_15",
+      "user": "punter_12",
       "yes": 0.0,
-      "no": 308
+      "no": 380
     },
     {
-      "user": "user_5",
-      "yes": 1521,
+      "user": "punter_1",
+      "yes": 933,
       "no": 0.0
     },
     {
-      "user": "user_12",
-      "yes": 738,
-      "no": 0.0
-    },
-    {
-      "user": "user_11",
+      "user": "punter_3",
       "yes": 0.0,
-      "no": 899
+      "no": 1085
     },
     {
-      "user": "user_1",
-      "yes": 1154,
+      "user": "punter_2",
+      "yes": 870,
       "no": 0.0
     },
     {
-      "user": "user_11",
+      "user": "punter_1",
       "yes": 0.0,
-      "no": 963
+      "no": 414
     },
     {
-      "user": "user_10",
-      "yes": 1387,
+      "user": "punter_18",
+      "yes": 356,
       "no": 0.0
     },
     {
-      "user": "user_6",
-      "yes": 692,
-      "no": 0.0
-    },
-    {
-      "user": "user_13",
+      "user": "punter_19",
       "yes": 0.0,
-      "no": 416
+      "no": 682
     },
     {
-      "user": "user_3",
-      "yes": 214,
+      "user": "punter_11",
+      "yes": 972,
       "no": 0.0
     },
     {
-      "user": "user_13",
+      "user": "punter_16",
       "yes": 0.0,
-      "no": 193
+      "no": 599
     },
     {
-      "user": "user_16",
-      "yes": 1097,
+      "user": "punter_22",
+      "yes": 1046,
       "no": 0.0
     },
     {
-      "user": "user_15",
+      "user": "punter_23",
+      "yes": 319,
+      "no": 0.0
+    },
+    {
+      "user": "punter_8",
       "yes": 0.0,
-      "no": 389
+      "no": 440
     },
     {
-      "user": "user_2",
-      "yes": 764,
+      "user": "punter_5",
+      "yes": 1199,
       "no": 0.0
     },
     {
-      "user": "user_15",
+      "user": "punter_32",
+      "yes": 501,
+      "no": 0.0
+    },
+    {
+      "user": "punter_25",
+      "yes": 0.0,
+      "no": 844
+    },
+    {
+      "user": "punter_15",
+      "yes": 927,
+      "no": 0.0
+    },
+    {
+      "user": "punter_18",
+      "yes": 0.0,
+      "no": 523
+    },
+    {
+      "user": "punter_15",
+      "yes": 291,
+      "no": 0.0
+    },
+    {
+      "user": "punter_20",
+      "yes": 0.0,
+      "no": 490
+    },
+    {
+      "user": "punter_5",
+      "yes": 531,
+      "no": 0.0
+    },
+    {
+      "user": "punter_4",
       "yes": 0.0,
       "no": 806
     },
     {
-      "user": "user_8",
-      "yes": 0.0,
-      "no": 604
-    },
-    {
-      "user": "user_15",
-      "yes": 307,
+      "user": "punter_5",
+      "yes": 596,
       "no": 0.0
     },
     {
-      "user": "user_18",
-      "yes": 0.0,
-      "no": 321
-    },
-    {
-      "user": "user_4",
-      "yes": 916,
+      "user": "punter_27",
+      "yes": 60,
       "no": 0.0
     },
     {
-      "user": "user_5",
+      "user": "punter_26",
       "yes": 0.0,
-      "no": 754
+      "no": 275
     },
     {
-      "user": "user_8",
-      "yes": 383,
+      "user": "punter_5",
+      "yes": 123,
       "no": 0.0
     },
     {
-      "user": "user_16",
-      "yes": 0.0,
-      "no": 229
-    },
-    {
-      "user": "user_7",
-      "yes": 0.0,
-      "no": 442
-    },
-    {
-      "user": "user_9",
-      "yes": 1162,
+      "user": "punter_1",
+      "yes": 171,
       "no": 0.0
     },
     {
-      "user": "user_17",
+      "user": "punter_4",
       "yes": 0.0,
-      "no": 1155
+      "no": 377
     },
     {
-      "user": "user_5",
-      "yes": 551,
+      "user": "punter_1",
+      "yes": 294,
       "no": 0.0
     },
     {
-      "user": "user_18",
+      "user": "punter_14",
       "yes": 0.0,
-      "no": 398
+      "no": 81
     },
     {
-      "user": "user_11",
-      "yes": 430,
+      "user": "punter_24",
+      "yes": 328,
       "no": 0.0
     },
     {
-      "user": "user_5",
-      "yes": 212,
-      "no": 0.0
-    },
-    {
-      "user": "user_9",
-      "yes": 117,
-      "no": 0.0
-    },
-    {
-      "user": "user_10",
+      "user": "punter_33",
       "yes": 0.0,
-      "no": 141
+      "no": 445
     },
     {
-      "user": "user_15",
-      "yes": 0.0,
-      "no": 51
-    },
-    {
-      "user": "user_17",
-      "yes": 748,
+      "user": "punter_11",
+      "yes": 396,
       "no": 0.0
     },
     {
-      "user": "user_6",
-      "yes": 194,
+      "user": "punter_27",
+      "yes": 0.0,
+      "no": 370
+    },
+    {
+      "user": "punter_2",
+      "yes": 351,
       "no": 0.0
     },
     {
-      "user": "user_1",
+      "user": "punter_17",
       "yes": 0.0,
-      "no": 229
+      "no": 489
     },
     {
-      "user": "user_2",
-      "yes": 256,
+      "user": "punter_29",
+      "yes": 1058,
+      "no": 0.0
+    },
+    {
+      "user": "punter_20",
+      "yes": 0.0,
+      "no": 1009
+    },
+    {
+      "user": "punter_6",
+      "yes": 529,
+      "no": 0.0
+    },
+    {
+      "user": "punter_16",
+      "yes": 0.0,
+      "no": 318
+    },
+    {
+      "user": "punter_34",
+      "yes": 233,
+      "no": 0.0
+    },
+    {
+      "user": "punter_35",
+      "yes": 0.0,
+      "no": 417
+    },
+    {
+      "user": "punter_19",
+      "yes": 365,
+      "no": 0.0
+    },
+    {
+      "user": "punter_2",
+      "yes": 0.0,
+      "no": 600
+    },
+    {
+      "user": "punter_32",
+      "yes": 0.0,
+      "no": 324
+    },
+    {
+      "user": "punter_8",
+      "yes": 417,
+      "no": 0.0
+    },
+    {
+      "user": "punter_11",
+      "yes": 0.0,
+      "no": 304
+    },
+    {
+      "user": "punter_32",
+      "yes": 122,
+      "no": 0.0
+    },
+    {
+      "user": "punter_25",
+      "yes": 0.0,
+      "no": 251
+    },
+    {
+      "user": "punter_25",
+      "yes": 241,
+      "no": 0.0
+    },
+    {
+      "user": "punter_13",
+      "yes": 366,
+      "no": 0.0
+    },
+    {
+      "user": "punter_12",
+      "yes": 0.0,
+      "no": 910
+    },
+    {
+      "user": "punter_30",
+      "yes": 1264,
+      "no": 0.0
+    },
+    {
+      "user": "punter_18",
+      "yes": 0.0,
+      "no": 822
+    },
+    {
+      "user": "punter_2",
+      "yes": 0.0,
+      "no": 14
+    },
+    {
+      "user": "punter_31",
+      "yes": 849,
+      "no": 0.0
+    },
+    {
+      "user": "punter_31",
+      "yes": 0.0,
+      "no": 746
+    },
+    {
+      "user": "punter_34",
+      "yes": 0.0,
+      "no": 117
+    },
+    {
+      "user": "punter_15",
+      "yes": 190,
+      "no": 0.0
+    },
+    {
+      "user": "punter_10",
+      "yes": 0.0,
+      "no": 249
+    },
+    {
+      "user": "punter_30",
+      "yes": 396,
+      "no": 0.0
+    },
+    {
+      "user": "punter_32",
+      "yes": 177,
+      "no": 0.0
+    },
+    {
+      "user": "punter_24",
+      "yes": 0.0,
+      "no": 399
+    },
+    {
+      "user": "punter_33",
+      "yes": 626,
+      "no": 0.0
+    },
+    {
+      "user": "punter_6",
+      "yes": 0.0,
+      "no": 350
+    },
+    {
+      "user": "punter_32",
+      "yes": 79,
+      "no": 0.0
+    },
+    {
+      "user": "punter_18",
+      "yes": 27,
+      "no": 0.0
+    },
+    {
+      "user": "punter_8",
+      "yes": 22,
+      "no": 0.0
+    },
+    {
+      "user": "punter_7",
+      "yes": 0.0,
+      "no": 271
+    },
+    {
+      "user": "punter_10",
+      "yes": 1060,
+      "no": 0.0
+    },
+    {
+      "user": "punter_20",
+      "yes": 0.0,
+      "no": 1017
+    },
+    {
+      "user": "punter_27",
+      "yes": 404,
+      "no": 0.0
+    },
+    {
+      "user": "punter_21",
+      "yes": 0.0,
+      "no": 795
+    },
+    {
+      "user": "punter_31",
+      "yes": 670,
+      "no": 0.0
+    },
+    {
+      "user": "punter_9",
+      "yes": 0.0,
+      "no": 262
+    },
+    {
+      "user": "punter_3",
+      "yes": 516,
+      "no": 0.0
+    },
+    {
+      "user": "punter_18",
+      "yes": 0.0,
+      "no": 349
+    },
+    {
+      "user": "punter_12",
+      "yes": 0.0,
+      "no": 130
+    },
+    {
+      "user": "punter_3",
+      "yes": 281,
+      "no": 0.0
+    },
+    {
+      "user": "punter_15",
+      "yes": 242,
+      "no": 0.0
+    },
+    {
+      "user": "punter_2",
+      "yes": 0.0,
+      "no": 244
+    },
+    {
+      "user": "punter_25",
+      "yes": 139,
+      "no": 0.0
+    },
+    {
+      "user": "punter_10",
+      "yes": 132,
+      "no": 0.0
+    },
+    {
+      "user": "punter_13",
+      "yes": 120,
+      "no": 0.0
+    },
+    {
+      "user": "punter_8",
+      "yes": 0.0,
+      "no": 121
+    },
+    {
+      "user": "punter_6",
+      "yes": 0.0,
+      "no": -209
+    },
+    {
+      "user": "punter_11",
+      "yes": 0.0,
+      "no": 235
+    },
+    {
+      "user": "punter_31",
+      "yes": 23,
+      "no": 0.0
+    },
+    {
+      "user": "punter_12",
+      "yes": 0.0,
+      "no": 94
+    },
+    {
+      "user": "punter_13",
+      "yes": 21,
+      "no": 0.0
+    },
+    {
+      "user": "punter_12",
+      "yes": 0.0,
+      "no": 84
+    },
+    {
+      "user": "punter_25",
+      "yes": 39,
+      "no": 0.0
+    },
+    {
+      "user": "punter_8",
+      "yes": 57,
+      "no": 0.0
+    },
+    {
+      "user": "punter_16",
+      "yes": 782,
+      "no": 0.0
+    },
+    {
+      "user": "punter_32",
+      "yes": 0.0,
+      "no": 789
+    },
+    {
+      "user": "punter_11",
+      "yes": 0.0,
+      "no": 21
+    },
+    {
+      "user": "punter_10",
+      "yes": 64,
+      "no": 0.0
+    },
+    {
+      "user": "punter_32",
+      "yes": -651,
+      "no": 0.0
+    },
+    {
+      "user": "punter_24",
+      "yes": 852,
+      "no": 0.0
+    },
+    {
+      "user": "punter_11",
+      "yes": 0.0,
+      "no": 187
+    },
+    {
+      "user": "punter_2",
+      "yes": 0.0,
+      "no": 63
+    },
+    {
+      "user": "punter_24",
+      "yes": 72,
+      "no": 0.0
+    },
+    {
+      "user": "punter_25",
+      "yes": 0.0,
+      "no": 52
+    },
+    {
+      "user": "punter_3",
+      "yes": 52,
+      "no": 0.0
+    },
+    {
+      "user": "punter_25",
+      "yes": 0.0,
+      "no": 35
+    },
+    {
+      "user": "punter_10",
+      "yes": 37,
+      "no": 0.0
+    },
+    {
+      "user": "punter_16",
+      "yes": 176,
+      "no": 0.0
+    },
+    {
+      "user": "punter_6",
+      "yes": 27,
+      "no": 0.0
+    },
+    {
+      "user": "punter_27",
+      "yes": 13,
+      "no": 0.0
+    },
+    {
+      "user": "punter_33",
+      "yes": -520,
+      "no": 0.0
+    },
+    {
+      "user": "punter_29",
+      "yes": 645,
+      "no": 0.0
+    },
+    {
+      "user": "punter_26",
+      "yes": 0.0,
+      "no": 287
+    },
+    {
+      "user": "punter_31",
+      "yes": 0.0,
+      "no": -746
+    },
+    {
+      "user": "punter_3",
+      "yes": 0.0,
+      "no": 662
+    },
+    {
+      "user": "punter_26",
+      "yes": 65,
       "no": 0.0
     }
   ]

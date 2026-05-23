@@ -1,26 +1,531 @@
 {
   "name": "Long Gradual Trend",
-  "description": "20 small, consistent buys on the Yes side over many steps. Excellent for seeing how different b values produce very different price paths over a long horizon.",
+  "description": "20 small, consistent buys on the Yes side over many steps. Excellent for seeing how different b values produce very different price paths over a long horizon. (extended to >100 trades with sells)",
   "trades": [
-    {"user": "alice", "yes": 2, "no": 0},
-    {"user": "bob",   "yes": 2, "no": 0},
-    {"user": "charlie", "yes": 2, "no": 0},
-    {"user": "diana", "yes": 2, "no": 0},
-    {"user": "eve",   "yes": 2, "no": 0},
-    {"user": "frank", "yes": 2, "no": 0},
-    {"user": "alice", "yes": 2, "no": 0},
-    {"user": "bob",   "yes": 2, "no": 0},
-    {"user": "charlie", "yes": 2, "no": 0},
-    {"user": "diana", "yes": 2, "no": 0},
-    {"user": "eve",   "yes": 2, "no": 0},
-    {"user": "frank", "yes": 2, "no": 0},
-    {"user": "alice", "yes": 2, "no": 0},
-    {"user": "bob",   "yes": 2, "no": 0},
-    {"user": "charlie", "yes": 2, "no": 0},
-    {"user": "diana", "yes": 2, "no": 0},
-    {"user": "eve",   "yes": 2, "no": 0},
-    {"user": "frank", "yes": 2, "no": 0},
-    {"user": "alice", "yes": 2, "no": 0},
-    {"user": "bob",   "yes": 2, "no": 0}
+    {
+      "user": "alice",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 2,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "frank",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "frank",
+      "yes": -16,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 9,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "diana",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": -6,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 9
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 9
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "bob",
+      "yes": -8,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": -18,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": -8,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": -21
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": -19
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": -9
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "diana",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "frank",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": -12
+    },
+    {
+      "user": "charlie",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "eve",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "charlie",
+      "yes": -46,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 12,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "charlie",
+      "yes": 11,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": -10
+    },
+    {
+      "user": "alice",
+      "yes": 4,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 11
+    },
+    {
+      "user": "charlie",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": 6
+    },
+    {
+      "user": "charlie",
+      "yes": -17,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "bob",
+      "yes": 7,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": -11
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": -27
+    },
+    {
+      "user": "frank",
+      "yes": -32,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": -4,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 10,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "eve",
+      "yes": -13,
+      "no": 0
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": -25
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": -14
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "eve",
+      "yes": 5,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": 10
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 8
+    },
+    {
+      "user": "frank",
+      "yes": -10,
+      "no": 0
+    },
+    {
+      "user": "diana",
+      "yes": -20,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 0,
+      "no": 4
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 7
+    },
+    {
+      "user": "charlie",
+      "yes": 0,
+      "no": 12
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": 5
+    },
+    {
+      "user": "alice",
+      "yes": 0,
+      "no": -22
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 3
+    },
+    {
+      "user": "diana",
+      "yes": 0,
+      "no": -13
+    },
+    {
+      "user": "charlie",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "bob",
+      "yes": 0,
+      "no": 9
+    },
+    {
+      "user": "frank",
+      "yes": 8,
+      "no": 0
+    },
+    {
+      "user": "frank",
+      "yes": 0,
+      "no": -20
+    },
+    {
+      "user": "eve",
+      "yes": 6,
+      "no": 0
+    },
+    {
+      "user": "charlie",
+      "yes": -8,
+      "no": 0
+    },
+    {
+      "user": "eve",
+      "yes": 4,
+      "no": 0
+    }
   ]
 }
