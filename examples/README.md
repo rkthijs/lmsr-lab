@@ -21,20 +21,21 @@ Each file has the structure:
 
 Current histories:
 
-**Arbitrary / illustrative**
-- `balanced_trades.json` — Users buying on both sides (6 trades)
-- `strong_early_conviction.json` — Heavy early buying on one side (5 trades)
-- `late_buyers.json` — Small early trades followed by larger moves (6 trades)
-- `long_gradual_trend.json` — 20 small consistent buys in one direction
-- `oscillating_trades.json` — Alternating buys between Yes and No (18 trades)
-- `whale_then_correction.json` — One massive early trade followed by corrective trades (12 trades)
-- `mixed_high_activity.json` — Noisy market with many users and mixed directions (22 trades)
-- `slow_build_then_surge.json` — Slow accumulation followed by a late surge (15 trades)
+**Arbitrary / illustrative** (all extended to >100 trades with sell-all examples)
+- `balanced_trades.json` — Users buying on both sides (now 107 trades)
+- `strong_early_conviction.json` — Heavy early buying on one side (now 105 trades)
+- `late_buyers.json` — Small early trades followed by larger moves (now 107 trades)
+- `long_gradual_trend.json` — 20 small consistent buys in one direction (now 105 trades)
+- `oscillating_trades.json` — Alternating buys between Yes and No (now 107 trades)
+- `whale_then_correction.json` — One massive early trade followed by corrective trades (now 105 trades)
+- `mixed_high_activity.json` — Noisy market with many users and mixed directions (now 107 trades)
+- `slow_build_then_surge.json` — Slow accumulation followed by a late surge (now 107 trades)
 
 **Principled (Kelly criterion + ~1000 initial subsidy)**
-- `kelly_rug_pull.json` — 27 trades. One "whale" slowly accumulates using Kelly sizing, then dumps hard.
-- `kelly_long_trend.json` — 40 trades. Many Kelly bettors with moderately bullish beliefs slowly push the price.
-- `kelly_high_activity.json` — 42 trades. Noisy, realistic high-volume market with Kelly-sized bets from many users with different beliefs.
+- `kelly_rug_pull.json` — 107 trades. One "whale" slowly accumulates using Kelly sizing, then dumps hard (includes sells).
+- `kelly_long_trend.json` — 114 trades. Many Kelly bettors with moderately bullish beliefs slowly push the price (includes sells).
+- `kelly_high_activity.json` — 117 trades. Noisy, realistic high-volume market with Kelly-sized bets from many users with different beliefs (includes sells).
+- `experts_vs_punters_10000.json` — **New**: 5620 trades. True probability = 0.85. Small group of well-calibrated "experts" + large crowd of noisy/biased "punters". Designed to be replayed with high liquidity (b = 200–1000) to study long-horizon information aggregation.
 
 Feel free to create your own histories to test different scenarios.
 
