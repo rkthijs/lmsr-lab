@@ -46,21 +46,35 @@ def kelly_fraction(p: float, q: float) -> float:
 def generate_kelly_history(
     name: str,
     description: str,
-    num_users: int = 12,
     num_steps: int = 25,
     true_p: float = 0.65,
-    belief_noise: float = 0.12,
+    # --- New heterogeneous population support (experts vs punters) ---
+    num_experts: int = 0,
+    expert_noise: float = 0.04,
+    num_punters: int = 12,
+    punter_noise: float = 0.18,
+    punter_mean: float | None = None,   # if None, use true_p
+    belief_noise: float = 0.12,         # legacy uniform mode (used when num_experts==0)
     initial_bankroll: float = 1000.0,
     market_b: float = 40.0,
     initial_subsidy: float = 1000.0,
+    min_edge: float = 0.025,
     seed: int = 42,
 ) -> Dict[str, Any]:
     """
     Simulate a sequence of trades from Kelly bettors.
 
-    Returns a dict ready to be saved as a trade history JSON.
+    Supports two modes:
+    - Legacy: all users have beliefs ~ N(true_p, belief_noise)
+    - Heterogeneous (recommended for realistic "experts vs punters"):
+        num_experts + num_punters populations with different noise levels.
+
+    The liquidity parameter `market_b` can now comfortably go up to 1000+.
     """
     random.seed(seed)
+
+    if punter_mean is None:
+        punter_mean = true_p
 
     sim = LMSRMarketSimulator()
     market = sim.create_market(
@@ -70,15 +84,41 @@ def generate_kelly_history(
         initial_subsidy=initial_subsidy,
     )
 
-    # Create users with noisy beliefs around the true probability
+    # Create users — support both legacy uniform noise and heterogeneous experts/punters
     users = {}
-    for i in range(num_users):
-        uid = f"user_{i+1}"
-        p = max(0.05, min(0.95, random.gauss(true_p, belief_noise)))
+    user_id = 1
+
+    # Experts (well calibrated, low noise)
+    for _ in range(num_experts):
+        uid = f"expert_{user_id}"
+        p = max(0.05, min(0.95, random.gauss(true_p, expert_noise)))
         users[uid] = {
             "belief": p,
-            "bankroll": initial_bankroll * random.uniform(0.6, 1.6),
+            "bankroll": initial_bankroll * random.uniform(0.7, 1.8),
+            "type": "expert",
         }
+        user_id += 1
+
+    # Punters (noisier or biased beliefs)
+    for _ in range(num_punters):
+        uid = f"punter_{user_id}"
+        p = max(0.05, min(0.95, random.gauss(punter_mean, punter_noise)))
+        users[uid] = {
+            "belief": p,
+            "bankroll": initial_bankroll * random.uniform(0.4, 1.4),
+            "type": "punter",
+        }
+        user_id += 1
+
+    # Legacy fallback (when no experts/punters specified)
+    if num_experts == 0 and num_punters == 0:
+        for i in range(12):  # default
+            uid = f"user_{i+1}"
+            p = max(0.05, min(0.95, random.gauss(true_p, belief_noise)))
+            users[uid] = {
+                "belief": p,
+                "bankroll": initial_bankroll * random.uniform(0.6, 1.6),
+            }
 
     trades: List[Dict[str, Any]] = []
 
@@ -90,52 +130,82 @@ def generate_kelly_history(
         q_yes, q_no = market.engine.price()
         p = u["belief"]
 
-        # Decide side
-        if p > q_yes + 0.03:          # small threshold to avoid tiny bets
+        did_trade = False
+
+        # --- BUY LOGIC (positive edge) ---
+        if p > q_yes + min_edge:
             side = "yes"
             q = q_yes
-        elif (1 - p) > q_no + 0.03:
+            f = kelly_fraction(p, q)
+            risk_amount = f * u["bankroll"]
+            if risk_amount >= 5.0:
+                approx_shares = risk_amount / max(q, 0.01)
+                shares = max(1, int(round(approx_shares)))
+                if side == "yes":
+                    cost, _ = market.engine.quote(shares, 0)
+                else:
+                    cost, _ = market.engine.quote(0, shares)
+                while cost > risk_amount and shares > 1:
+                    shares -= 1
+                    if side == "yes":
+                        cost, _ = market.engine.quote(shares, 0)
+                    else:
+                        cost, _ = market.engine.quote(0, shares)
+                if shares >= 1:
+                    trades.append({"user": uid, "yes": shares, "no": 0.0})
+                    sim.place_trade(market.id, uid, shares, 0)
+                    u["bankroll"] -= cost
+                    did_trade = True
+
+        elif (1 - p) > q_no + min_edge and not did_trade:
             side = "no"
             q = q_no
-        else:
-            continue  # no edge, skip
-
-        # Kelly sizing (fraction of current bankroll)
-        f = kelly_fraction(p if side == "yes" else (1-p), q)
-        risk_amount = f * u["bankroll"]
-
-        if risk_amount < 5.0:   # minimum meaningful bet with 1000 bankroll
-            continue
-
-        # Convert desired risk into whole shares
-        approx_shares = risk_amount / max(q, 0.01)
-
-        # Try rounding to nearest integer (no fractional shares)
-        shares = max(1, int(round(approx_shares)))
-
-        # Check actual cost for this integer amount
-        if side == "yes":
-            cost, _ = market.engine.quote(shares, 0)
-        else:
-            cost, _ = market.engine.quote(0, shares)
-
-        # If the actual cost is higher than risk_amount due to slippage, reduce shares
-        while cost > risk_amount and shares > 1:
-            shares -= 1
-            if side == "yes":
-                cost, _ = market.engine.quote(shares, 0)
-            else:
+            f = kelly_fraction(1-p, q)
+            risk_amount = f * u["bankroll"]
+            if risk_amount >= 5.0:
+                approx_shares = risk_amount / max(q, 0.01)
+                shares = max(1, int(round(approx_shares)))
                 cost, _ = market.engine.quote(0, shares)
+                while cost > risk_amount and shares > 1:
+                    shares -= 1
+                    cost, _ = market.engine.quote(0, shares)
+                if shares >= 1:
+                    trades.append({"user": uid, "yes": 0.0, "no": shares})
+                    sim.place_trade(market.id, uid, 0, shares)
+                    u["bankroll"] -= cost
+                    did_trade = True
 
-        # Final sanity: at least 1 share if they decided to bet
-        if side == "yes":
-            trades.append({"user": uid, "yes": shares, "no": 0.0})
-            sim.place_trade(market.id, uid, shares, 0)
-            u["bankroll"] -= cost
-        else:
-            trades.append({"user": uid, "yes": 0.0, "no": shares})
-            sim.place_trade(market.id, uid, 0, shares)
-            u["bankroll"] -= cost
+        # --- SELL LOGIC (negative edge on existing position, with SELL ALL) ---
+        if not did_trade:
+            pos = sim.get_user_position(market.id, uid)
+            sold = False
+
+            # Sell Yes if we hold and belief is now too low
+            if pos[0] > 0 and p < q_yes - min_edge:
+                if random.random() < 0.6:
+                    shares = int(pos[0])          # SELL ALL
+                else:
+                    shares = max(1, int(pos[0] * random.uniform(0.4, 0.85)))
+                trades.append({"user": uid, "yes": -shares, "no": 0.0})
+                sim.place_trade(market.id, uid, -shares, 0)
+                cost, _ = market.engine.quote(-shares, 0)
+                u["bankroll"] -= cost
+                sold = True
+                did_trade = True
+
+            # Sell No if we hold and belief is now too high for No
+            if not sold and pos[1] > 0 and (1 - p) < q_no - min_edge:
+                if random.random() < 0.6:
+                    shares = int(pos[1])          # SELL ALL
+                else:
+                    shares = max(1, int(pos[1] * random.uniform(0.4, 0.85)))
+                trades.append({"user": uid, "yes": 0.0, "no": -shares})
+                sim.place_trade(market.id, uid, 0, -shares)
+                cost, _ = market.engine.quote(0, -shares)
+                u["bankroll"] -= cost
+                did_trade = True
+
+        # If nothing happened this step, just continue (rare with many users)
 
     return {
         "name": name,
@@ -162,14 +232,15 @@ if __name__ == "__main__":
 
     # === Generate several interesting histories with ~1000 subsidy ===
 
-    # 1. Classic slow pump then rug (Kelly sized)
+    # 1. Classic slow pump then rug (Kelly sized, now with sells + longer)
     h1 = generate_kelly_history(
         name="Kelly Classic Rug Pull",
-        description="Whale with strong belief slowly accumulates using Kelly sizing, retail with noisier beliefs pile in, then whale dumps hard.",
-        num_users=15,
-        num_steps=32,
+        description="Whale with strong belief slowly accumulates using Kelly sizing, retail with noisier beliefs pile in, then whale dumps hard. Includes sells.",
+        num_punters=30,
+        num_steps=120,
         true_p=0.72,
-        belief_noise=0.18,
+        punter_noise=0.18,
+        min_edge=0.015,
         initial_bankroll=1000.0,
         market_b=45.0,
         initial_subsidy=1000.0,
@@ -177,14 +248,15 @@ if __name__ == "__main__":
     )
     save_history(h1, "examples/trade_histories/kelly_rug_pull.json")
 
-    # 2. Very long gradual trend with Kelly bettors
+    # 2. Very long gradual trend with Kelly bettors (now with sells)
     h2 = generate_kelly_history(
         name="Kelly Long Gradual Trend",
-        description="Many Kelly bettors with moderately bullish beliefs slowly push the price over a long period (40 trades).",
-        num_users=18,
-        num_steps=40,
+        description="Many Kelly bettors with moderately bullish beliefs slowly push the price over a long period. Includes sells for realism.",
+        num_punters=35,
+        num_steps=120,
         true_p=0.68,
-        belief_noise=0.15,
+        punter_noise=0.15,
+        min_edge=0.012,
         initial_bankroll=1000.0,
         market_b=50.0,
         initial_subsidy=1000.0,
@@ -192,14 +264,15 @@ if __name__ == "__main__":
     )
     save_history(h2, "examples/trade_histories/kelly_long_trend.json")
 
-    # 3. Noisy market with Kelly sizing (more realistic)
+    # 3. Noisy market with Kelly sizing (more realistic, with sells)
     h3 = generate_kelly_history(
         name="Kelly High-Activity Noisy Market",
-        description="Many users with different beliefs trade frequently using Kelly. More realistic volume pattern.",
-        num_users=22,
-        num_steps=45,
+        description="Many users with different beliefs trade frequently using Kelly. More realistic volume pattern with buys and sells.",
+        num_punters=40,
+        num_steps=120,
         true_p=0.55,
-        belief_noise=0.22,
+        punter_noise=0.22,
+        min_edge=0.01,
         initial_bankroll=1000.0,
         market_b=35.0,
         initial_subsidy=1000.0,
@@ -207,4 +280,33 @@ if __name__ == "__main__":
     )
     save_history(h3, "examples/trade_histories/kelly_high_activity.json")
 
-    print("\nAll Kelly-based histories generated with initial_subsidy ≈ 1000.")
+    # ------------------------------------------------------------------
+    # 6. Experts vs Punters — the requested long-horizon example
+    #    True probability = 0.85. Small number of experts + large population of punters.
+    #    Several thousand high-quality trades. Excellent for high-b (up to 1000) exploration.
+    # ------------------------------------------------------------------
+    print("\nGenerating the big Experts vs Punters example (10k trades, true_p=0.85)...")
+    h6 = generate_kelly_history(
+        name="Experts vs Punters (p=0.85, long horizon)",
+        description=(
+            "True probability of the event is 0.85. A small number of experts have accurate beliefs "
+            "near the truth. A large crowd of punters have noisy/biased beliefs. The market sees thousands "
+            "of trades as information slowly aggregates. Excellent for exploring very high liquidity "
+            "(b = 200–1000) over long time scales."
+        ),
+        num_experts=8,
+        expert_noise=0.03,
+        num_punters=220,
+        punter_noise=0.20,
+        punter_mean=0.68,
+        num_steps=10000,
+        true_p=0.85,
+        initial_bankroll=1000.0,
+        market_b=280.0,
+        initial_subsidy=1000.0,
+        min_edge=0.012,            # lower threshold so we actually reach many thousands of trades
+        seed=2026,
+    )
+    save_history(h6, "examples/trade_histories/experts_vs_punters_10000.json")
+
+    print("\nAll Kelly-based histories generated (including the new 10k-trade experts vs punters example).")
