@@ -1,0 +1,27 @@
+{
+  "name": "Classic Rug Pull",
+  "description": "One 'whale' or 'dev' account slowly accumulates a large Yes position over many trades (pump), then dumps almost everything at once (rug). Other users buy during the pump.",
+  "trades": [
+    {"user": "whale", "yes": 3, "no": 0},
+    {"user": "retail1", "yes": 2, "no": 0},
+    {"user": "whale", "yes": 3, "no": 0},
+    {"user": "retail2", "yes": 2, "no": 0},
+    {"user": "retail3", "yes": 2, "no": 0},
+    {"user": "whale", "yes": 4, "no": 0},
+    {"user": "retail1", "yes": 2, "no": 0},
+    {"user": "retail4", "yes": 3, "no": 0},
+    {"user": "whale", "yes": 4, "no": 0},
+    {"user": "retail2", "yes": 3, "no": 0},
+    {"user": "retail5", "yes": 2, "no": 0},
+    {"user": "retail3", "yes": 3, "no": 0},
+    {"user": "whale", "yes": 5, "no": 0},
+    {"user": "retail1", "yes": 2, "no": 0},
+    {"user": "retail6", "yes": 3, "no": 0},
+    {"user": "whale", "yes": 0, "no": 0},
+    {"user": "whale", "yes": -35, "no": 0},
+    {"user": "retail4", "yes": 0, "no": 4},
+    {"user": "retail5", "yes": 0, "no": 5},
+    {"user": "retail6", "yes": 0, "no": 3},
+    {"user": "retail1", "yes": 0, "no": 2}
+  ]
+}

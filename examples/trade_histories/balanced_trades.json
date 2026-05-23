@@ -1,0 +1,28 @@
+{
+  "name": "Balanced Trading",
+  "description": "Multiple users buying on both sides in a relatively balanced way. Good for seeing how b affects price movement in a two-sided market.",
+  "trades": [
+    {"user": "alice",   "yes": 10, "no": 0},
+    {"user": "bob",     "yes": 0,  "no": 8},
+    {"user": "charlie", "yes": 5,  "no": 0},
+    {"user": "diana",   "yes": 0,  "no": 6},
+    {"user": "alice",   "yes": 3,  "no": 0},
+    {"user": "bob",     "yes": 0,  "no": 4},
+    {"user": "eve",     "yes": 4,  "no": 0},
+    {"user": "frank",   "yes": 0,  "no": 5},
+    {"user": "charlie", "yes": 2,  "no": 0},
+    {"user": "diana",   "yes": 0,  "no": 3},
+    {"user": "alice",   "yes": 6,  "no": 0},
+    {"user": "bob",     "yes": 0,  "no": 2},
+    {"user": "eve",     "yes": 0,  "no": 4},
+    {"user": "frank",   "yes": 3,  "no": 0},
+    {"user": "charlie", "yes": 0,  "no": 5},
+    {"user": "diana",   "yes": 2,  "no": 0},
+    {"user": "alice",   "yes": 1,  "no": 0},
+    {"user": "bob",     "yes": 0,  "no": 3},
+    {"user": "eve",     "yes": 4,  "no": 0},
+    {"user": "frank",   "yes": 0,  "no": 2},
+    {"user": "charlie", "yes": 3,  "no": 0},
+    {"user": "diana",   "yes": 0,  "no": 4}
+  ]
+}

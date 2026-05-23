@@ -296,14 +296,13 @@ class LMSRMarketSimulator:
 
         Only users with at least `min_resolved_trades` resolved trades are included.
         """
-        # Collect data per user from resolved markets
+        # Build per-user aggregates for all users who have scores
         user_data: dict[str, dict] = {}
 
         for market in self.markets.values():
             if market.status != "resolved":
                 continue
 
-            # Scores for this market
             for score in market.scores:
                 uid = score.user_id
                 if uid not in user_data:
@@ -317,7 +316,6 @@ class LMSRMarketSimulator:
                 user_data[uid]["log_scores"].append(score.log_score)
                 user_data[uid]["resolved_trades"] += 1
 
-            # Payouts for realized P/L
             for payout in market.payouts:
                 uid = payout.user_id
                 if uid not in user_data:
@@ -332,8 +330,7 @@ class LMSRMarketSimulator:
         # Filter and build leaderboard entries
         leaderboard = []
         for uid, data in user_data.items():
-            resolved = data["resolved_trades"]
-            if resolved < min_resolved_trades:
+            if data["resolved_trades"] < min_resolved_trades:
                 continue
 
             avg_brier = sum(data["brier_scores"]) / len(data["brier_scores"])
@@ -341,7 +338,7 @@ class LMSRMarketSimulator:
 
             entry = {
                 "user_id": uid,
-                "resolved_trades": resolved,
+                "resolved_trades": data["resolved_trades"],
                 "avg_brier": round(avg_brier, 4),
                 "avg_log_score": round(avg_log, 4),
                 "total_pnl": round(data["pnl"], 2),
@@ -360,17 +357,36 @@ class LMSRMarketSimulator:
 
         return leaderboard
 
-    def get_user_portfolio(self, user_id: str) -> UserPortfolio:
-        """
-        Return a rich aggregated view of everything the user has.
+    def _compute_and_store_scores(self, market: Market, winning: str, timestamp: datetime) -> None:
+        """Private helper extracted from resolve_market for clarity."""
+        outcome_value = 1.0 if winning == "yes" else 0.0
 
-        This is the main benefit of the improved User model.
-        """
-        user = self.get_user(user_id)
+        for trade in market.trades:
+            forecast = trade.price_after_yes
+            brier = float(brier_score([forecast], [outcome_value])[0])
+            log_s = float(log_score([forecast], [outcome_value])[0])
 
-        positions: dict[str, dict[str, float]] = {}
+            score = Score(
+                market_id=market.id,
+                user_id=trade.user_id,
+                trade_id=trade.id,
+                forecast_prob=forecast,
+                outcome=outcome_value,
+                brier_score=brier,
+                log_score=log_s,
+                timestamp=timestamp,
+            )
+            market.scores.append(score)
+
+    def _get_user_aggregates(self, user_id: str) -> dict:
+        """
+        Internal helper that builds aggregated data for a user across all markets.
+        Used by both get_user_portfolio() and get_leaderboard() to avoid duplication.
+        """
+        positions = {}
         realized_pnl = 0.0
         total_payouts = 0.0
+        resolved_trades = 0
         open_count = 0
         resolved_count = 0
 
@@ -384,24 +400,39 @@ class LMSRMarketSimulator:
 
             if market.status == "resolved":
                 resolved_count += 1
-                # Add payouts this user received from this market
                 for p in market.payouts:
                     if p.user_id == user_id:
                         total_payouts += p.amount
-                        # Simple realized P/L approximation:
-                        # positive payout on winning side is "win"
                         realized_pnl += p.amount
+                # Count resolved trades for this user
+                resolved_trades += sum(1 for s in market.scores if s.user_id == user_id)
             else:
                 open_count += 1
+
+        return {
+            "positions": positions,
+            "realized_pnl": realized_pnl,
+            "total_payouts": total_payouts,
+            "resolved_trades": resolved_trades,
+            "open_count": open_count,
+            "resolved_count": resolved_count,
+        }
+
+    def get_user_portfolio(self, user_id: str) -> UserPortfolio:
+        """
+        Return a rich aggregated view of everything the user has.
+        """
+        user = self.get_user(user_id)
+        agg = self._get_user_aggregates(user_id)
 
         return UserPortfolio(
             user_id=user_id,
             balance=user.balance,
-            positions=positions,
-            realized_pnl=realized_pnl,
-            total_payouts_received=total_payouts,
-            open_markets_count=open_count,
-            resolved_markets_count=resolved_count,
+            positions=agg["positions"],
+            realized_pnl=agg["realized_pnl"],
+            total_payouts_received=agg["total_payouts"],
+            open_markets_count=agg["open_count"],
+            resolved_markets_count=agg["resolved_count"],
         )
 
     # ------------------------------------------------------------------
@@ -612,9 +643,12 @@ class LMSRMarketSimulator:
         """
         Resolve a market to 'yes' or 'no'.
 
-        Creates explicit immutable Payout records for every user who held
-        the winning outcome (1:1 payout) and credits their balance.
-        This follows the resolution + payouts model from DESIGN.md.
+        Delegates the main responsibilities to focused private methods:
+        - Creating payouts + crediting balances
+        - Computing and storing calibration scores
+        - Running accounting identity checks
+
+        This keeps resolve_market as a clear orchestrator.
         """
         market = self.get_market(market_id)
         if market.status != "open":
@@ -623,60 +657,52 @@ class LMSRMarketSimulator:
         result = market.engine.resolve(outcome)
         winning = outcome.lower()
         idx = 0 if winning == "yes" else 1
+        timestamp = datetime.now(timezone.utc)
 
-        payout_timestamp = datetime.now(timezone.utc)
+        # Delegate the heavy lifting
+        self._create_payouts_and_credit_balances(market, winning, idx, timestamp)
+        self._compute_and_store_scores(market, winning, timestamp)
+
+        self._finalize_resolution(market, winning, timestamp, result)
+
+        return result
+
+    def _create_payouts_and_credit_balances(
+        self, market: Market, winning: str, idx: int, timestamp: datetime
+    ) -> None:
+        """Create Payout records and credit user balances for the winning side."""
         users = set(t.user_id for t in market.trades)
 
-        # 1. Create payouts and credit balances
         for user in users:
-            pos = self.get_user_position(market_id, user)
+            pos = self.get_user_position(market.id, user)
             amount = pos[idx]
 
             if amount > 0:
                 payout = Payout(
-                    market_id=market_id,
+                    market_id=market.id,
                     user_id=user,
                     amount=amount,
                     outcome=winning,
-                    timestamp=payout_timestamp,
+                    timestamp=timestamp,
                 )
                 market.payouts.append(payout)
                 self._adjust_balance(user, amount)
 
-        # 2. Compute and store calibration scores for every trade
-        outcome_value = 1.0 if winning == "yes" else 0.0
-
-        for trade in market.trades:
-            forecast = trade.price_after_yes
-            brier = float(brier_score([forecast], [outcome_value])[0])
-            log_s = float(log_score([forecast], [outcome_value])[0])
-
-            score = Score(
-                market_id=market_id,
-                user_id=trade.user_id,
-                trade_id=trade.id,
-                forecast_prob=forecast,
-                outcome=outcome_value,
-                brier_score=brier,
-                log_score=log_s,
-                timestamp=payout_timestamp,
-            )
-            market.scores.append(score)
-
+    def _finalize_resolution(
+        self, market: Market, winning: str, timestamp: datetime, result: dict
+    ) -> None:
+        """Set final state on the market and attach accounting information to the result."""
         market.status = "resolved"
         market.resolution_outcome = winning
-        market.resolved_at = payout_timestamp
+        market.resolved_at = timestamp
 
-        # Run the critical accounting identity check after resolution
-        accounting = self.check_accounting_identity(market_id)
+        accounting = self.check_accounting_identity(market.id)
         result["accounting_identity"] = accounting
 
         if not accounting["is_valid"]:
             result["accounting_warning"] = (
                 f"Accounting identity violated! remainder={accounting['remainder']:.8f}"
             )
-
-        return result
 
     # ------------------------------------------------------------------
     # Utilities

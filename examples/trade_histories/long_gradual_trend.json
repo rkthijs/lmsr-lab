@@ -1,0 +1,26 @@
+{
+  "name": "Long Gradual Trend",
+  "description": "20 small, consistent buys on the Yes side over many steps. Excellent for seeing how different b values produce very different price paths over a long horizon.",
+  "trades": [
+    {"user": "alice", "yes": 2, "no": 0},
+    {"user": "bob",   "yes": 2, "no": 0},
+    {"user": "charlie", "yes": 2, "no": 0},
+    {"user": "diana", "yes": 2, "no": 0},
+    {"user": "eve",   "yes": 2, "no": 0},
+    {"user": "frank", "yes": 2, "no": 0},
+    {"user": "alice", "yes": 2, "no": 0},
+    {"user": "bob",   "yes": 2, "no": 0},
+    {"user": "charlie", "yes": 2, "no": 0},
+    {"user": "diana", "yes": 2, "no": 0},
+    {"user": "eve",   "yes": 2, "no": 0},
+    {"user": "frank", "yes": 2, "no": 0},
+    {"user": "alice", "yes": 2, "no": 0},
+    {"user": "bob",   "yes": 2, "no": 0},
+    {"user": "charlie", "yes": 2, "no": 0},
+    {"user": "diana", "yes": 2, "no": 0},
+    {"user": "eve",   "yes": 2, "no": 0},
+    {"user": "frank", "yes": 2, "no": 0},
+    {"user": "alice", "yes": 2, "no": 0},
+    {"user": "bob",   "yes": 2, "no": 0}
+  ]
+}

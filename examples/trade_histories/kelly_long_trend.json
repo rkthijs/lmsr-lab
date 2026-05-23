@@ -1,0 +1,191 @@
+{
+  "name": "Kelly Long Gradual Trend",
+  "description": "Many Kelly bettors with moderately bullish beliefs slowly push the price over a long period (40 trades).",
+  "market_params": {
+    "b": 50.0,
+    "initial_subsidy": 1000.0,
+    "fee_rate": 0.02
+  },
+  "trades": [
+    {
+      "user": "user_15",
+      "yes": 0.0,
+      "no": 308
+    },
+    {
+      "user": "user_5",
+      "yes": 1521,
+      "no": 0.0
+    },
+    {
+      "user": "user_12",
+      "yes": 738,
+      "no": 0.0
+    },
+    {
+      "user": "user_11",
+      "yes": 0.0,
+      "no": 899
+    },
+    {
+      "user": "user_1",
+      "yes": 1154,
+      "no": 0.0
+    },
+    {
+      "user": "user_11",
+      "yes": 0.0,
+      "no": 963
+    },
+    {
+      "user": "user_10",
+      "yes": 1387,
+      "no": 0.0
+    },
+    {
+      "user": "user_6",
+      "yes": 692,
+      "no": 0.0
+    },
+    {
+      "user": "user_13",
+      "yes": 0.0,
+      "no": 416
+    },
+    {
+      "user": "user_3",
+      "yes": 214,
+      "no": 0.0
+    },
+    {
+      "user": "user_13",
+      "yes": 0.0,
+      "no": 193
+    },
+    {
+      "user": "user_16",
+      "yes": 1097,
+      "no": 0.0
+    },
+    {
+      "user": "user_15",
+      "yes": 0.0,
+      "no": 389
+    },
+    {
+      "user": "user_2",
+      "yes": 764,
+      "no": 0.0
+    },
+    {
+      "user": "user_15",
+      "yes": 0.0,
+      "no": 806
+    },
+    {
+      "user": "user_8",
+      "yes": 0.0,
+      "no": 604
+    },
+    {
+      "user": "user_15",
+      "yes": 307,
+      "no": 0.0
+    },
+    {
+      "user": "user_18",
+      "yes": 0.0,
+      "no": 321
+    },
+    {
+      "user": "user_4",
+      "yes": 916,
+      "no": 0.0
+    },
+    {
+      "user": "user_5",
+      "yes": 0.0,
+      "no": 754
+    },
+    {
+      "user": "user_8",
+      "yes": 383,
+      "no": 0.0
+    },
+    {
+      "user": "user_16",
+      "yes": 0.0,
+      "no": 229
+    },
+    {
+      "user": "user_7",
+      "yes": 0.0,
+      "no": 442
+    },
+    {
+      "user": "user_9",
+      "yes": 1162,
+      "no": 0.0
+    },
+    {
+      "user": "user_17",
+      "yes": 0.0,
+      "no": 1155
+    },
+    {
+      "user": "user_5",
+      "yes": 551,
+      "no": 0.0
+    },
+    {
+      "user": "user_18",
+      "yes": 0.0,
+      "no": 398
+    },
+    {
+      "user": "user_11",
+      "yes": 430,
+      "no": 0.0
+    },
+    {
+      "user": "user_5",
+      "yes": 212,
+      "no": 0.0
+    },
+    {
+      "user": "user_9",
+      "yes": 117,
+      "no": 0.0
+    },
+    {
+      "user": "user_10",
+      "yes": 0.0,
+      "no": 141
+    },
+    {
+      "user": "user_15",
+      "yes": 0.0,
+      "no": 51
+    },
+    {
+      "user": "user_17",
+      "yes": 748,
+      "no": 0.0
+    },
+    {
+      "user": "user_6",
+      "yes": 194,
+      "no": 0.0
+    },
+    {
+      "user": "user_1",
+      "yes": 0.0,
+      "no": 229
+    },
+    {
+      "user": "user_2",
+      "yes": 256,
+      "no": 0.0
+    }
+  ]
+}

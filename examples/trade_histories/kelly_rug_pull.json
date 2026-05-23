@@ -1,0 +1,166 @@
+{
+  "name": "Kelly Classic Rug Pull",
+  "description": "Whale with strong belief slowly accumulates using Kelly sizing, retail with noisier beliefs pile in, then whale dumps hard.",
+  "market_params": {
+    "b": 45.0,
+    "initial_subsidy": 1000.0,
+    "fee_rate": 0.02
+  },
+  "trades": [
+    {
+      "user": "user_13",
+      "yes": 1066,
+      "no": 0.0
+    },
+    {
+      "user": "user_8",
+      "yes": 341,
+      "no": 0.0
+    },
+    {
+      "user": "user_4",
+      "yes": 0.0,
+      "no": 623
+    },
+    {
+      "user": "user_14",
+      "yes": 937,
+      "no": 0.0
+    },
+    {
+      "user": "user_10",
+      "yes": 0.0,
+      "no": 983
+    },
+    {
+      "user": "user_11",
+      "yes": 899,
+      "no": 0.0
+    },
+    {
+      "user": "user_9",
+      "yes": 0.0,
+      "no": 872
+    },
+    {
+      "user": "user_10",
+      "yes": 776,
+      "no": 0.0
+    },
+    {
+      "user": "user_13",
+      "yes": 0.0,
+      "no": 385
+    },
+    {
+      "user": "user_6",
+      "yes": 0.0,
+      "no": 351
+    },
+    {
+      "user": "user_1",
+      "yes": 1043,
+      "no": 0.0
+    },
+    {
+      "user": "user_7",
+      "yes": 0.0,
+      "no": 1066
+    },
+    {
+      "user": "user_15",
+      "yes": 1099,
+      "no": 0.0
+    },
+    {
+      "user": "user_13",
+      "yes": 0.0,
+      "no": 560
+    },
+    {
+      "user": "user_11",
+      "yes": 0.0,
+      "no": 259
+    },
+    {
+      "user": "user_9",
+      "yes": 245,
+      "no": 0.0
+    },
+    {
+      "user": "user_7",
+      "yes": 0.0,
+      "no": 442
+    },
+    {
+      "user": "user_11",
+      "yes": 292,
+      "no": 0.0
+    },
+    {
+      "user": "user_9",
+      "yes": 0.0,
+      "no": 186
+    },
+    {
+      "user": "user_11",
+      "yes": 84,
+      "no": 0.0
+    },
+    {
+      "user": "user_13",
+      "yes": 134,
+      "no": 0.0
+    },
+    {
+      "user": "user_10",
+      "yes": 0.0,
+      "no": 175
+    },
+    {
+      "user": "user_15",
+      "yes": 152,
+      "no": 0.0
+    },
+    {
+      "user": "user_14",
+      "yes": 0.0,
+      "no": 102
+    },
+    {
+      "user": "user_8",
+      "yes": 203,
+      "no": 0.0
+    },
+    {
+      "user": "user_9",
+      "yes": 0.0,
+      "no": 291
+    },
+    {
+      "user": "user_11",
+      "yes": 30,
+      "no": 0.0
+    },
+    {
+      "user": "user_7",
+      "yes": 413,
+      "no": 0.0
+    },
+    {
+      "user": "user_6",
+      "yes": 0.0,
+      "no": 593
+    },
+    {
+      "user": "user_9",
+      "yes": 366,
+      "no": 0.0
+    },
+    {
+      "user": "user_1",
+      "yes": 0.0,
+      "no": 133
+    }
+  ]
+}

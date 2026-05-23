@@ -1,0 +1,26 @@
+{
+  "name": "Pump & Dump with Retail FOMO",
+  "description": "Whale slowly pumps, retail FOMO kicks in with increasing buy sizes, then whale rugs hard. Classic crypto pattern.",
+  "trades": [
+    {"user": "whale", "yes": 2, "no": 0},
+    {"user": "retail1", "yes": 1, "no": 0},
+    {"user": "whale", "yes": 2, "no": 0},
+    {"user": "retail2", "yes": 1, "no": 0},
+    {"user": "retail3", "yes": 2, "no": 0},
+    {"user": "whale", "yes": 3, "no": 0},
+    {"user": "retail1", "yes": 2, "no": 0},
+    {"user": "retail4", "yes": 3, "no": 0},
+    {"user": "whale", "yes": 4, "no": 0},
+    {"user": "retail2", "yes": 3, "no": 0},
+    {"user": "retail5", "yes": 4, "no": 0},
+    {"user": "retail3", "yes": 3, "no": 0},
+    {"user": "whale", "yes": 5, "no": 0},
+    {"user": "retail1", "yes": 4, "no": 0},
+    {"user": "retail6", "yes": 5, "no": 0},
+    {"user": "whale", "yes": 0, "no": 0},
+    {"user": "whale", "yes": -28, "no": 0},
+    {"user": "retail4", "yes": 0, "no": 6},
+    {"user": "retail5", "yes": 0, "no": 7},
+    {"user": "retail6", "yes": 0, "no": 4}
+  ]
+}

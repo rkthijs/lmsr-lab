@@ -1,0 +1,28 @@
+{
+  "name": "Mixed High Activity",
+  "description": "22 trades with many different users and mixed buy directions. Simulates a noisy, active market with no clear trend. Great for comparing how different b values filter noise vs amplify it.",
+  "trades": [
+    {"user": "u1", "yes": 3, "no": 0},
+    {"user": "u2", "yes": 0, "no": 2},
+    {"user": "u3", "yes": 4, "no": 0},
+    {"user": "u4", "yes": 0, "no": 5},
+    {"user": "u5", "yes": 2, "no": 0},
+    {"user": "u1", "yes": 0, "no": 3},
+    {"user": "u6", "yes": 6, "no": 0},
+    {"user": "u2", "yes": 0, "no": 4},
+    {"user": "u3", "yes": 1, "no": 0},
+    {"user": "u7", "yes": 0, "no": 2},
+    {"user": "u4", "yes": 5, "no": 0},
+    {"user": "u5", "yes": 0, "no": 6},
+    {"user": "u6", "yes": 2, "no": 0},
+    {"user": "u8", "yes": 0, "no": 3},
+    {"user": "u1", "yes": 4, "no": 0},
+    {"user": "u2", "yes": 0, "no": 2},
+    {"user": "u7", "yes": 3, "no": 0},
+    {"user": "u3", "yes": 0, "no": 4},
+    {"user": "u4", "yes": 2, "no": 0},
+    {"user": "u5", "yes": 0, "no": 1},
+    {"user": "u6", "yes": 5, "no": 0},
+    {"user": "u8", "yes": 0, "no": 3}
+  ]
+}
