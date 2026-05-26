@@ -4,7 +4,8 @@
   "market_params": {
     "b": 50.0,
     "initial_subsidy": 1000.0,
-    "fee_rate": 0.02
+    "fee_rate": 0.02,
+    "true_p": 0.68
   },
   "trades": [
     {

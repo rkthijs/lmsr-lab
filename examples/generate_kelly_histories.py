@@ -214,6 +214,7 @@ def generate_kelly_history(
             "b": market_b,
             "initial_subsidy": initial_subsidy,
             "fee_rate": 0.02,
+            "true_p": true_p,
         },
         "trades": trades,
     }

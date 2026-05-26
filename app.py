@@ -17,10 +17,17 @@ from examples.demo_seeding import (  # noqa: E402
 )
 from examples.replay_history import load_history, replay_history  # noqa: E402
 from src.lmsr.simulator import LMSRMarketSimulator  # noqa: E402
+from src.lmsr.adaptive import LinearVolumeB, BoundedB  # noqa: E402
 
 st.set_page_config(page_title="LMSR Multi-Market Demo", layout="wide")
 st.title("LMSR Prediction Markets")
 st.caption("Multi-market simulator with full backend features — based on DESIGN.md")
+
+# Small banner for demo context
+st.info(
+    "This is a **research & demonstration tool**. The Python engine is the core. "
+    "We're currently exploring a more professional stack (FastAPI + modern frontend)."
+)
 
 # =====================
 # SESSION STATE
@@ -29,13 +36,52 @@ if "sim" not in st.session_state:
     st.session_state.sim = LMSRMarketSimulator()
     st.session_state.user_id = "alice"
     st.session_state.active_market_id = None
+    st.session_state.demo_initialized = False
+    st.session_state.trade_counter = 0
 
 sim = st.session_state.sim
+
+# Auto-load a strong demo state on first run (great for soft demos)
+if not st.session_state.demo_initialized:
+    try:
+        mids = run_scenario(sim, "Full Teaching Demo (Multi-Market)")
+        if isinstance(mids, list):
+            st.session_state.active_market_id = mids[0]
+        else:
+            st.session_state.active_market_id = mids
+
+        # Add one market using adaptive b so we can demonstrate the concept live.
+        # Seeded with many small, mixed trades so the price starts at a
+        # reasonable level (~0.72) while b has already grown from the floor.
+        adaptive_b = BoundedB(LinearVolumeB(alpha=0.07, min_b=10), min_b=10, max_b=300)
+        adaptive_market = sim.create_market(
+            title="Will the new product launch on time? (Adaptive b)",
+            b=adaptive_b,
+            resolution_criteria="Internal launch tracking system + executive sign-off."
+        )
+
+        # Gradual mixed seeding (reproducible) — designed so the price
+        # starts at a sensible level (~0.73) while b has already grown
+        # noticeably from the floor. Good for demonstrating adaptive b.
+        seed_trades = [
+            (3,5),(2,4),(4,3),(1,4),(3,2),(2,5),(4,4),(3,6),
+            (5,3),(2,3),(4,2),(5,5),(3,4),(6,3),(2,4),(4,5),
+            (7,3),(3,2),(5,4),(2,3),(4,3),(8,4),(3,5),(5,2),
+            (6,3),(2,2),(4,4),(9,3),(3,3),(5,5),(4,2),(3,4),(7,3)
+        ]
+        for i, (yes, no) in enumerate(seed_trades):
+            sim.place_trade(adaptive_market.id, f"trader_{i}", yes, no)
+
+    except Exception:
+        # If seeding fails for any reason, continue with empty state
+        pass
+    st.session_state.demo_initialized = True
 
 # =====================
 # SIDEBAR
 # =====================
 with st.sidebar:
+    st.markdown("### Demo Controls")
     st.header("User")
     user_id = st.text_input("User ID", value=st.session_state.user_id)
     st.session_state.user_id = user_id
@@ -45,8 +91,9 @@ with st.sidebar:
 
     st.divider()
     st.header("Markets")
+    st.caption("Load realistic scenarios or create your own.")
 
-    with st.expander("➕ Create New Market", expanded=True):
+    with st.expander("➕ Create New Market", expanded=False):
         title = st.text_input("Market Question", value="Will revenue exceed $50M this quarter?")
         b_value = st.slider("Liquidity (b)", 1.0, 1000.0, 25.0, 1.0)
         resolution_criteria = st.text_area(
@@ -66,7 +113,7 @@ with st.sidebar:
     # ------------------------------------------------------------------
     # Quick Demo Seeding (solves "always start from zero")
     # ------------------------------------------------------------------
-    with st.expander("🚀 Quick Demo Scenarios", expanded=False):
+    with st.expander("🚀 Quick Demo Scenarios", expanded=True):
         st.caption("One-click population of realistic markets using pre-generated histories (Kelly sizing, rug pulls, trends, etc.).")
 
         scenarios = get_available_scenarios()
@@ -94,7 +141,12 @@ with st.sidebar:
 
     all_markets = sim.list_markets()
     if all_markets:
-        market_labels = {m.id: f"{m.title} | {m.status.upper()} | {len(m.trades)} trades" for m in all_markets}
+        market_labels = {}
+        for m in all_markets:
+            label = f"{m.title} | {m.status.upper()} | {len(m.trades)} trades"
+            if m.engine.is_adaptive_b:
+                label += " [Adaptive]"
+            market_labels[m.id] = label
         market_ids = list(market_labels.keys())
 
         default_idx = 0
@@ -120,8 +172,54 @@ tab_trade, tab_portfolio, tab_leaderboard, tab_explorer = st.tabs(
 )
 
 
+@st.dialog("Confirm Trade")
+def _show_trade_confirmation_dialog(sim, active_id, user_id, sy, sn, cost, raw_cost, current_pos, market_title):
+    """Confirmation dialog before executing a trade."""
+    st.markdown(f"**Market:** {market_title}")
+
+    direction_yes = "Buy" if sy > 0 else "Sell"
+    direction_no = "Buy" if sn > 0 else "Sell"
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Yes Shares", f"{abs(sy):.1f}", delta=f"{direction_yes} Yes" if sy != 0 else None)
+    with col2:
+        st.metric("No Shares", f"{abs(sn):.1f}", delta=f"{direction_no} No" if sn != 0 else None)
+
+    st.divider()
+
+    if cost >= 0:
+        st.metric("Estimated Cost", f"{cost:,.2f}")
+    else:
+        st.metric("Estimated Proceeds", f"{-cost:,.2f}")
+
+    st.write(f"**Current Position:** Yes {current_pos[0]:.1f} | No {current_pos[1]:.1f}")
+
+    new_yes = current_pos[0] + sy
+    new_no = current_pos[1] + sn
+    st.write(f"**Position After Trade:** Yes {new_yes:.1f} | No {new_no:.1f}")
+
+    st.divider()
+
+    col_confirm, col_cancel = st.columns(2)
+
+    with col_confirm:
+        if st.button("✅ Confirm Trade", type="primary", use_container_width=True):
+            res = sim.place_trade(active_id, user_id, sy, sn)
+            if "error" in res:
+                st.error(res["error"])
+            else:
+                st.success(f"Trade executed! Cash flow: {res['cost']:.2f}")
+                st.session_state.trade_counter += 1
+            st.rerun()
+
+    with col_cancel:
+        if st.button("Cancel", use_container_width=True):
+            st.rerun()
+
+
 @st.fragment
-def _render_market_b_controls_and_price_chart(market, active_id, sim):
+def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: int = 0):
     """Fragment that isolates all b-related UI and the dynamic price history chart
     for the currently visible market. Changing b here only reruns this fragment,
     not the rest of the app (Portfolio, Leaderboard, etc.).
@@ -148,52 +246,97 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim):
         b_from_conviction = (typical_size * 0.25) / (desired_move / 100.0) * activity_mult
         b_from_subsidy = subsidy / 0.693147  # binary LMSR worst-case loss ≈ b * ln(2)
 
-        # Subsidy budget acts as an upper bound on recommended liquidity
+        # Ideal fixed b the user "wants" for their desired impact
         rec_b = min(b_from_conviction, b_from_subsidy)
 
-        low_b = rec_b * 0.65
-        high_b = rec_b * 1.55
+        if market.engine.is_adaptive_b:
+            # --- Adaptive market version ---
+            st.markdown("**Recommended adaptive parameters**")
 
-        st.markdown(f"**Recommended b range:** **{low_b:,.0f} - {high_b:,.0f}**")
+            current_total = float(sum(abs(x) for x in market.engine.q)) or 1.0
+            recommended_alpha = rec_b / current_total
+
+            low_alpha = recommended_alpha * 0.65
+            high_alpha = recommended_alpha * 1.55
+
+            st.markdown(f"**Recommended alpha range:** **{low_alpha:.4f} – {high_alpha:.4f}**")
+            st.caption(
+                f"Suggested alpha: **{recommended_alpha:.4f}** "
+                f"(based on your desired impact of ~{desired_move:.1f} points for a strong bet)"
+            )
+
+            if st.button("Apply recommended alpha to this market", type="primary", use_container_width=True):
+                # Create a fresh BoundedB(LinearVolumeB) with the recommended alpha
+                # Keep reasonable defaults for min/max
+                new_strategy = BoundedB(
+                    LinearVolumeB(alpha=recommended_alpha, min_b=8),
+                    min_b=8,
+                    max_b=400
+                )
+                market.engine.set_b_strategy(new_strategy)
+                st.rerun()
+
+        else:
+            # --- Fixed market version (original behavior) ---
+            low_b = rec_b * 0.65
+            high_b = rec_b * 1.55
+
+            st.markdown(f"**Recommended b range:** **{low_b:,.0f} - {high_b:,.0f}**")
+            st.caption(
+                f"Center suggestion: **{rec_b:,.0f}** (capped by your subsidy budget) "
+                f"→ implied max theoretical loss ≈ **{rec_b * 0.693:,.0f}**"
+            )
+
+            if st.button("Apply recommended b to this market", type="primary", use_container_width=True):
+                market.b = float(rec_b)
+                market.engine.b = float(rec_b)
+                st.rerun()   # scoped to this fragment only
+
+    # Liquidity (b) setting
+    if market.engine.is_adaptive_b:
+        st.markdown("**Liquidity (b)** — this market uses **adaptive** liquidity")
+        st.metric("Current b", f"{market.engine.b:.1f}")
         st.caption(
-            f"Center suggestion: **{rec_b:,.0f}** (capped by your subsidy budget) "
-            f"→ implied max theoretical loss ≈ **{rec_b * 0.693:,.0f}**"
+            "b is managed dynamically by a strategy (e.g. grows with trading volume). "
+            "You cannot manually set a fixed value on this market."
         )
+    else:
+        # For fixed-b markets, put manual editing behind an expander
+        # because the recommender + adaptive strategies are now the preferred way
+        with st.expander("Advanced: Manually adjust fixed liquidity (b)", expanded=False):
+            st.caption("Higher = deeper market, prices react less to each trade. "
+                       "Most users should use the recommender above or an adaptive strategy instead.")
 
-        if st.button("Apply recommended b to this market", type="primary", use_container_width=True):
-            market.b = float(rec_b)
-            market.engine.b = float(rec_b)
-            st.rerun()   # scoped to this fragment only
+            current_b = float(market.b)
+            max_b_control = max(1000.0, current_b * 1.3 + 50)
 
-    # Liquidity (b) setting — dual control
-    st.markdown("**Liquidity (b)** — higher = deeper market, prices react less to each trade")
-    b_slider_col, b_num_col = st.columns([3, 1])
-    with b_slider_col:
-        slider_b = st.slider(
-            "b (slider)",
-            min_value=1.0,
-            max_value=1000.0,
-            value=float(market.b),
-            step=5.0,
-            key=f"b_slider_{active_id}",
-            label_visibility="collapsed",
-        )
-    with b_num_col:
-        num_b = st.number_input(
-            "b (exact)",
-            min_value=1.0,
-            max_value=1000.0,
-            value=float(market.b),
-            step=1.0,
-            key=f"b_num_{active_id}",
-            label_visibility="collapsed",
-        )
+            b_slider_col, b_num_col = st.columns([3, 1])
+            with b_slider_col:
+                slider_b = st.slider(
+                    "b (slider)",
+                    min_value=1.0,
+                    max_value=max_b_control,
+                    value=min(current_b, max_b_control),
+                    step=5.0,
+                    key=f"b_slider_{active_id}",
+                    label_visibility="collapsed",
+                )
+            with b_num_col:
+                num_b = st.number_input(
+                    "b (exact)",
+                    min_value=1.0,
+                    max_value=max_b_control,
+                    value=min(current_b, max_b_control),
+                    step=1.0,
+                    key=f"b_num_{active_id}",
+                    label_visibility="collapsed",
+                )
 
-    new_b = num_b if num_b != market.b else slider_b
-    if new_b != market.b:
-        market.engine.b = float(new_b)
-        market.b = float(new_b)
-        st.rerun()   # scoped to this fragment only
+            new_b = num_b if num_b != current_b else slider_b
+            if new_b != current_b:
+                market.engine.b = float(new_b)
+                market.b = float(new_b)
+                st.rerun()   # scoped to this fragment only
 
     # Price history chart — only for the visible market
     if market.trades:
@@ -212,12 +355,64 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim):
             "Trade #": list(range(1, len(dyn_prices) + 1)),
             "P(Yes)": dyn_prices,
         })
-        st.line_chart(
-            price_df.set_index("Trade #"),
-            height=220,
-            width="stretch",
-        )
-        st.caption(f"Price path recomputed with current b = {market.b}")
+
+        try:
+            import altair as alt
+            price_chart = alt.Chart(price_df).mark_line().encode(
+                x=alt.X("Trade #:O", title="Trade #"),
+                y=alt.Y("P(Yes):Q", scale=alt.Scale(domain=[0, 1]), title="P(Yes)"),
+                tooltip=["Trade #", "P(Yes)"]
+            ).properties(height=220, title="Price Path (P(Yes))")
+            st.altair_chart(price_chart, use_container_width=True)
+        except Exception:
+            st.line_chart(
+                price_df.set_index("Trade #"),
+                height=220,
+                width="stretch",
+            )
+            st.caption("Install altair for better charts (fixed y-axis [0,1])")
+
+        st.caption(f"Price path recomputed with current b = {market.engine.b:.1f}")
+
+        # Volume per step (Yes vs No)
+        if market.trades:
+            vol_df = pd.DataFrame({
+                "Trade #": list(range(1, len(market.trades) + 1)),
+                "Yes Volume": [t.shares_yes for t in market.trades],
+                "No Volume": [t.shares_no for t in market.trades],
+            })
+
+            try:
+                import altair as alt
+
+                vol_long = vol_df.melt(
+                    id_vars=["Trade #"],
+                    var_name="Side",
+                    value_name="Volume"
+                )
+                vol_long["AbsVolume"] = vol_long["Volume"].abs()
+
+                color_scale = alt.Scale(
+                    domain=["Yes Volume", "No Volume"],
+                    range=["#2ecc71", "#e74c3c"]
+                )
+
+                vol_chart = alt.Chart(vol_long).mark_bar().encode(
+                    x=alt.X("Trade #:O", title="Trade #"),
+                    y=alt.Y("AbsVolume:Q", title="Volume"),
+                    color=alt.Color(
+                        "Side:N",
+                        scale=color_scale,
+                        title=None
+                    ),
+                    tooltip=["Trade #", "Side", alt.Tooltip("Volume", title="Signed Volume")]
+                ).properties(
+                    height=160,
+                    title="Volume per Step (Yes vs No)"
+                )
+                st.altair_chart(vol_chart, use_container_width=True)
+            except Exception:
+                st.bar_chart(vol_df.set_index("Trade #"), height=160)
     else:
         st.caption("No trades yet — the market starts at 50/50. Place the first trade to see the price chart.")
 
@@ -232,6 +427,7 @@ def _render_portfolio_tab(sim, user_id):
     Only reruns when something inside this fragment changes.
     """
     st.header(f"Portfolio for {user_id}")
+    st.caption("See your positions, balance, and realized performance across all markets.")
 
     portfolio = sim.get_user_portfolio(user_id)
 
@@ -279,6 +475,7 @@ def _render_leaderboard_tab(sim):
     Only reruns when the radio or other widgets inside change.
     """
     st.header("Global Leaderboard")
+    st.caption("See who has been most accurate (Brier / Log) or profitable (PnL) across resolved markets.")
 
     metric = st.radio("Rank by", ["brier (lower better)", "log (higher better)", "pnl (higher better)"], horizontal=True)
 
@@ -287,6 +484,23 @@ def _render_leaderboard_tab(sim):
         "log (higher better)": "log",
         "pnl (higher better)": "pnl",
     }
+
+    with st.expander("How the three rankings work", expanded=False):
+        st.markdown("""
+        **Brier Score** (lower is better)  
+        Measures how close your probability forecasts were to the actual outcomes.  
+        Being confidently wrong is heavily penalized. A perfect forecaster scores 0.
+
+        **Log Score** (higher is better)  
+        A strict proper scoring rule that *strongly* punishes overconfidence.  
+        Predicting 99% when you're wrong is extremely costly. Higher (less negative) is better.
+
+        **PnL** (higher is better)  
+        This is **not** a traditional net profit/loss.  
+        It only counts the money you received when the market resolved in your favor.  
+        If you were wrong, you simply lose what you spent — it does **not** appear as a negative PnL.  
+        This is why PnL is almost always positive in the leaderboard.
+        """)
 
     board = sim.get_leaderboard(metric=metric_map[metric], min_resolved_trades=1)
 
@@ -307,6 +521,14 @@ with tab_trade:
     if market.resolution_criteria:
         st.caption(f"**Resolution Criteria:** {market.resolution_criteria}")
 
+    # Prominent callout for adaptive b markets (very useful for the soft demo)
+    if market.engine.is_adaptive_b:
+        st.info(
+            f"**Adaptive Liquidity Active** — This market uses a dynamic `b` strategy "
+            f"that grows with trading volume. Current b = **{market.engine.b:.1f}** "
+            f"(started at the floor of 10.0). This reduces early volatility compared to a fixed low b."
+        )
+
     cols = st.columns([1, 1, 1, 1])
     with cols[0]:
         st.metric("Status", market.status.upper())
@@ -315,16 +537,18 @@ with tab_trade:
     with cols[2]:
         st.metric("Traders", len(set(t.user_id for t in market.trades)))
     with cols[3]:
-        if market.status == "resolved":
-            st.success(f"Resolved: **{market.resolution_outcome.upper()}**")
+        st.metric("MM Revenue (so far)", f"{market.engine.total_revenue:,.2f}")
 
     # Only the visible market's b controls + price chart live in a fragment.
     # Changing b here only reruns this fragment — Portfolio, Leaderboard and
     # other markets are not recomputed.
-    _render_market_b_controls_and_price_chart(market, active_id, sim)
+    _render_market_b_controls_and_price_chart(
+        market, active_id, sim, refresh=st.session_state.trade_counter
+    )
 
     if market.status == "open":
         st.subheader("Place Trade")
+        st.caption("Enter positive numbers to buy shares, negative to sell. You can trade both sides in one transaction.")
 
         # Side-by-side inputs so they don't take full width
         yes_col, no_col = st.columns(2)
@@ -334,7 +558,7 @@ with tab_trade:
                 value=0.0,
                 step=1.0,
                 key=f"sy_{active_id}",
-                help="+ = buy,  - = sell"
+                help="Positive = buy Yes, Negative = sell Yes"
             )
         with no_col:
             sn = st.number_input(
@@ -342,7 +566,7 @@ with tab_trade:
                 value=0.0,
                 step=1.0,
                 key=f"sn_{active_id}",
-                help="+ = buy,  - = sell"
+                help="Positive = buy No, Negative = sell No"
             )
 
         cost, _ = market.engine.quote(sy, sn)
@@ -368,13 +592,26 @@ with tab_trade:
             else:
                 st.caption("Payout multiplier not shown for selling trades")
 
-        if st.button("Execute Trade", type="primary", key=f"trade_{active_id}"):
-            res = sim.place_trade(active_id, user_id, sy, sn)
-            if "error" in res:
-                st.error(res["error"])
-            else:
-                st.success(f"Executed! Cash flow: {res['cost']:.2f}")
-                st.rerun()
+        # Prevent no-op trades (both sides zero)
+        trade_disabled = (sy == 0 and sn == 0)
+
+        if st.button("Execute Trade", type="primary", key=f"trade_{active_id}", disabled=trade_disabled):
+            cost, raw_cost = market.engine.quote(sy, sn)
+            current_pos = sim.get_user_position(active_id, user_id)
+            _show_trade_confirmation_dialog(
+                sim=sim,
+                active_id=active_id,
+                user_id=user_id,
+                sy=sy,
+                sn=sn,
+                cost=cost,
+                raw_cost=raw_cost,
+                current_pos=current_pos,
+                market_title=market.title,
+            )
+
+        if trade_disabled:
+            st.caption("Enter a non-zero number of shares on at least one side to execute a trade.")
 
     else:
         st.info("Market is resolved.")
@@ -383,6 +620,7 @@ with tab_trade:
 
     # Positions
     st.subheader("Positions in this Market")
+    st.caption("Your current holdings in the selected market.")
     your_pos = sim.get_user_position(active_id, user_id)
     st.write(f"**You** — Yes: {your_pos[0]:.1f} | No: {your_pos[1]:.1f}")
 
@@ -399,6 +637,7 @@ with tab_trade:
     # Resolution + Scoring (now using stored scores when possible)
     if market.status == "open":
         st.subheader("Resolve Market")
+        st.caption("Resolve the market to see final payouts and calibration scores.")
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Resolve to Yes", type="secondary"):
@@ -447,7 +686,7 @@ with tab_leaderboard:
 # =====================
 with tab_explorer:
     st.header("Interactive b Explorer")
-    st.caption("Load one of the example trade histories and see in real time how the liquidity parameter `b` changes the price path and volume impact.")
+    st.caption("Explore how different liquidity levels (`b`) affect price behavior on real trade histories. Great for understanding why adaptive b matters.")
 
     # Discover available histories — use __file__ so this works no matter the CWD
     # (fixes the relative-path bug when Streamlit is started from a different directory).
@@ -538,26 +777,30 @@ with tab_explorer:
         # Use absolute volume for bar height so bars don't get dwarfed by negative sells
         vol_long["AbsVolume"] = vol_long["Volume"].abs()
 
-        color_scale = alt.Scale(
-            domain=["Yes Volume", "No Volume"],
-            range=["#2ecc71", "#e74c3c"]   # green for Yes, red for No
-        )
-
-        vol_chart = alt.Chart(vol_long).mark_bar().encode(
-            x=alt.X("Step:O", title="Step"),
-            y=alt.Y("AbsVolume:Q", title="Volume", scale=alt.Scale(domain=[0, None])),
-            color=alt.Color(
-                "Side:N",
-                scale=color_scale,
-                legend=alt.Legend(title="Side", orient="top")
-            ),
-            tooltip=["Step", "Side", alt.Tooltip("Volume", title="Signed Volume (buy +, sell -)")]
-        ).properties(
-            height=220,
-            title="Volume per Step (Yes vs No)"
-        )
-
-        st.altair_chart(vol_chart, use_container_width=True)
+        # Volume chart — prefer Altair bars when reasonable.
+        # Fall back to native Streamlit chart only for very long histories
+        # (Altair bars become unreadable or fail to render properly past ~45 steps).
+        if len(vol_long) > 45:
+            st.bar_chart(vol_df.set_index("Step")[["Yes Volume", "No Volume"]], height=220)
+            st.caption("Volume per Step (Yes vs No) — using fallback for long history")
+        else:
+            vol_chart = alt.Chart(vol_long).mark_bar().encode(
+                x=alt.X("Step:O", title="Step"),
+                y=alt.Y("AbsVolume:Q", title="Volume", scale=alt.Scale(domain=[0, None])),
+                color=alt.Color(
+                    "Side:N",
+                    scale=alt.Scale(
+                        domain=["Yes Volume", "No Volume"],
+                        range=["#2ecc71", "#e74c3c"]
+                    ),
+                    title=None
+                ),
+                tooltip=["Step", "Side", alt.Tooltip("Volume", title="Signed Volume (buy +, sell -)")]
+            ).properties(
+                height=220,
+                title="Volume per Step (Yes vs No)"
+            )
+            st.altair_chart(vol_chart, use_container_width=True)
 
     except Exception:
         # Fallback if altair is not installed

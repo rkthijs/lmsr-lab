@@ -103,7 +103,7 @@ Options:
 
 ```bash
 python examples/generate_rug_analysis_report.py \
-    --b 10,25,50,100 \
+    --b 100,200,400,800 \
     --output examples/reports/my_rug_analysis.pdf
 ```
 

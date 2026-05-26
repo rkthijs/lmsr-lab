@@ -286,13 +286,26 @@ Trade histories in `examples/trade_histories/` are JSON (simple `{user, yes, no}
 
 ## 8. Open Items / Future Evolution
 
-- **Dynamic `b`** (Othman et al. 2013 volume-based or other adaptive rules) — solves the thin-market / early-volatility problem.
+This section captures the currently identified directions for evolving the system beyond the current in-memory research simulator.
+
+### API & Integration
+- **Agent / Bot API** — Expose a clean, stable, and well-documented API that allows external agents and automated trading bots to participate in markets. This API should support both fixed-b and adaptive-b markets and enable large-scale simulations, reinforcement learning agents, Kelly-based strategies, and market-making bots.
+
+### Architecture & Deployment
+- **Backend / Frontend Separation** — Introduce a proper API layer (FastAPI is the leading candidate) to decouple the simulation engine from any user interface. This enables multiple frontends and clearer separation of concerns.
+- **Professional Web Demo** — Build a production-quality demonstration using a Python (FastAPI) backend that wraps the existing engine, paired with a modern Node.js frontend (e.g. React/Next.js). The goal is a professional-looking interface suitable for internal stakeholders while preserving the Python core as the single source of truth. Long-term, this path may lead to retiring or de-emphasizing the current Streamlit application.
+
+### Data Persistence Layer
+- **Robust SQL Database Backend** — Move from the current in-memory + pickle model to a production-grade SQL database (PostgreSQL) with proper schema, transactions, concurrency control (row-level or optimistic locking), migrations, and full support for users, balances, trades, payouts, and scores. This is a prerequisite for real-world trading scenarios.
+- **Internal Blockchain for Audit Trails (Exploratory / Low Priority)** — Investigate the use of a strictly internal (private/permissioned) blockchain or hash-chained ledger to provide tamper-proof, verifiable audit trails for trades, balance changes, and resolutions. This component must remain completely invisible from outside the system and is currently considered low-priority research.
+
+### Other Open Items
+- **Dynamic `b`** — Basic support for adaptive/liquidity-sensitive `b` now exists via `src/lmsr/adaptive.py`. Further research into effective default strategies and their theoretical properties remains valuable.
 - Multi-outcome and scalar markets.
-- Proper JSON (de)serialization of histories + full simulator state (in addition to pickle).
-- Real PostgreSQL backend with the schema above + row-level locking for concurrent trades.
-- Admin UI for market creation/resolution.
-- Richer calibration visualizations (reliability diagrams).
+- Proper JSON (de)serialization of histories and full simulator state (in addition to pickle).
+- Richer calibration visualizations (e.g., reliability diagrams).
 - Kelly-criterion position-sizing helpers exposed in the public API.
+- Admin capabilities for market creation and resolution.
 
 ---
 

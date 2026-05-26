@@ -5,7 +5,7 @@ affect price paths in various rug-pull and long-trend scenarios.
 
 Usage:
     python examples/generate_rug_analysis_report.py
-    python examples/generate_rug_analysis_report.py --output my_report.pdf --b 10,20,40,80
+    python examples/generate_rug_analysis_report.py --output my_report.pdf --b 100,200,400,800
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from examples.replay_history import (
     load_history,
     compare_b_values,
     plot_price_with_volume,
+    plot_price_volume_grid,
 )
 
 # Default histories to analyze (prioritizing the principled Kelly-based ones)
@@ -87,34 +88,79 @@ def generate_report(
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
 
+        # Histories with very large individual trades look too busy with 4 overlaid lines.
+        # For those we use a 2x2 grid of separate b subplots instead.
+        GRID_HISTORIES = {"kelly_rug_pull", "kelly_long_trend", "kelly_high_activity"}
+
+        # Ground-truth probabilities the Kelly bettors were targeting (for reference lines on plots)
+        TRUE_PROB = {
+            "kelly_rug_pull": 0.72,
+            "kelly_long_trend": 0.68,
+            "kelly_high_activity": 0.55,
+            # The very_long_* ones are more illustrative and don't have a single strong true_p
+        }
+
         # One page per history
         for hist_path in history_paths:
             print(f"Processing: {hist_path}")
             history = load_history(hist_path)
-            name = history.get("name", Path(hist_path).stem)
+            stem = Path(hist_path).stem
+            name = history.get("name", stem)
 
             results = compare_b_values(history, b_values=b_values, print_table=False)
 
-            # Generate price + volume plot and keep the figure open for adding the table
-            fig = plot_price_with_volume(
-                history,
-                results,
-                title=f"{name} — Price Path + Volume by b",
-                show=False,
-                save_path=None,
-                close_fig=False,
-                figsize=(11, 9.5),          # taller figure to leave room for the table
+            # Prefer value stored in the history itself (future-proof)
+            true_p = (
+                history.get("market_params", {}).get("true_p")
+                or TRUE_PROB.get(stem)
             )
+
+            if stem in GRID_HISTORIES:
+                # 4 clean subplots (much more readable for big trades)
+                fig = plot_price_volume_grid(
+                    history,
+                    results,
+                    title=f"{name} — Price reaction per b value",
+                    figsize=(13.5, 10.2),
+                    close_fig=False,
+                    true_p=true_p,
+                )
+                same_page_table = False   # table goes on its own page for these
+            else:
+                # Normal overlay style is fine for the long gradual ones
+                fig = plot_price_with_volume(
+                    history,
+                    results,
+                    title=f"{name} — Price Path + Volume by b",
+                    show=False,
+                    save_path=None,
+                    close_fig=False,
+                    figsize=(11, 9.5),
+                    true_p=true_p,
+                )
+                same_page_table = True
 
             if fig is None:
                 print(f"  Skipping {name} (matplotlib issue)")
                 continue
 
-            # Reserve space at the bottom and add the table there cleanly
-            fig.subplots_adjust(bottom=0.20)
+            if same_page_table:
+                # Original behavior: plot + table on the same page
+                fig.subplots_adjust(bottom=0.20)
+                ax_table = fig.add_axes([0.08, 0.03, 0.84, 0.14])
+                ax_table.axis("off")
+            else:
+                # For grid plots we save the visual first, then make a dedicated table page
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close(fig)
 
-            ax_table = fig.add_axes([0.08, 0.03, 0.84, 0.14])
-            ax_table.axis("off")
+                # Create a clean single-purpose page for the statistics table
+                fig, ax = plt.subplots(figsize=(11, 3.5))
+                ax.axis("off")
+                ax.set_title(f"{name} — Summary Statistics", fontsize=13, pad=12)
+
+                ax_table = ax
+                # We'll save this table page right after building the table below
 
             table_data = [
                 ["b", "QV", "TV", "Roughness", "Step Vol", "Max Step", "Final |p-0.5|"]
@@ -142,8 +188,13 @@ def generate_report(
             table.set_fontsize(9)
             table.scale(1.0, 1.4)
 
-            pdf.savefig(fig, bbox_inches="tight")
-            plt.close(fig)
+            if same_page_table:
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close(fig)
+            else:
+                # Dedicated table page for the grid-style histories
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close(fig)
 
         # Final summary page
         fig, ax = plt.subplots(figsize=(11, 8.5))
@@ -157,9 +208,11 @@ def generate_report(
             "• In long gradual trends, low b can push prices close to 1.0, while high b stays moderate.",
             "• Rug pulls with fake volume (coordinated accounts) are more effective at low b.",
             "",
-            "Recommendation for internal tools:",
-            "  - Use moderate-to-high b (40–100) if you want stable prices and less manipulation risk.",
-            "  - Use lower b (10–25) only when you want prices to be very responsive to new information.",
+            "Recommendation for internal tools (with Kelly-sized bets):",
+            "  - b = 100–200: noticeable impact, still educational volatility",
+            "  - b = 400+: much more stable, good for serious forecasting markets",
+            "  - b ≥ 500–800: very deep markets (e.g. Experts vs Punters style)",
+            "  - Only use b < 50 when you specifically want extreme sensitivity.",
         ]
 
         y_pos = 0.75
@@ -189,7 +242,7 @@ def main():
     )
     parser.add_argument(
         "--b",
-        default="10,25,50,100",
+        default="100,200,400,800",
         help="Comma-separated list of b values",
     )
     parser.add_argument(

@@ -59,7 +59,11 @@ from __future__ import annotations
 
 import numpy as np
 import numpy.typing as npt
-from typing import Any
+from typing import Any, Callable, Union
+
+# Type for b: either a fixed float or a function q -> b
+BType = Union[float, Callable[[npt.NDArray[np.floating]], float]]
+
 
 class BinaryLMSRMarket:
     """
@@ -70,47 +74,102 @@ class BinaryLMSRMarket:
 
     Attributes
     ----------
-    b : float
-        Liquidity parameter. Larger values make the market "deeper" —
-        prices move less for a given trade size. Typical values: 10–100.
+    b : float | Callable
+        Liquidity parameter or adaptive function.
+        - If float: fixed liquidity (classic LMSR behavior).
+        - If callable: dynamic/adaptive liquidity. The callable receives the
+          current share vector `q` and must return a positive float for `b`.
+          This enables Liquidity-Sensitive LMSR variants (see Othman et al. 2013).
     q : np.ndarray, shape (2,)
         Outstanding shares [q_yes, q_no]. This is the fundamental state.
     user_positions : dict[str, np.ndarray]
-        Separate ledger of each user's holdings. Critical for preventing
-        users from selling shares they do not own.
+        Separate ledger of each user's holdings.
     total_revenue : float
         Total money collected by the market maker so far (including fees).
-        Used at resolution to compute the market maker's P/L.
 
     Design Notes
     ------------
+    - Supports both fixed and dynamic/adaptive `b`.
+    - When using adaptive b, `b` is re-evaluated at each pricing/costing step
+      based on the current `q`.
     - User positions are tracked *separately* from q (as specified in DESIGN.md).
-    - All pricing and costing uses the hardened numerical methods.
-    - A 2% fee is applied asymmetrically (see `quote`).
-    - Resolution uses the simple "payout = winning shares" rule, which
-      satisfies the fundamental accounting identity when combined with
-      the cost function.
+
+    Examples
+    --------
+    Fixed liquidity (classic):
+        >>> m = BinaryLMSRMarket(b=50)
+
+    Adaptive liquidity (b grows with volume):
+        >>> from src.lmsr.adaptive import LinearVolumeB
+        >>> m = BinaryLMSRMarket(b=LinearVolumeB(alpha=0.05, min_b=10))
     """
 
-    def __init__(self, b: float = 10.0, fee_rate: float = 0.02):
+    def __init__(self, b: BType = 10.0, fee_rate: float = 0.02):
         """
         Create a new binary LMSR market.
 
         Parameters
         ----------
-        b : float
-            Liquidity parameter. Controls how much prices move per share traded.
-            - Small b (e.g. 5–15): prices are very sensitive; good for small groups.
-            - Larger b (e.g. 30–100): deeper market, less slippage on big trades.
+        b : float or callable
+            Liquidity parameter.
+            - float: Fixed b (classic LMSR). Typical values 10–200.
+            - callable: Adaptive b function with signature `b(q) -> float`.
+              The function receives the current share vector and returns
+              the liquidity to use at that moment. Enables dynamic liquidity
+              rules (e.g. b growing with trading volume).
         fee_rate : float
             Market-maker fee applied to every trade (default 2%).
-            Positive fees are charged on buys, negative on sells (asymmetric).
         """
-        self.b = float(b)
+        self._b: BType = b
         self.fee_rate = float(fee_rate)
-        self.q = np.array([0.0, 0.0])  # [q_yes, q_no]
+        self.q = np.array([0.0, 0.0])
         self.user_positions: dict[str, np.ndarray] = {}
         self.total_revenue = 0.0
+
+    @property
+    def b(self) -> float:
+        """Return the current effective b (evaluates adaptive function if needed)."""
+        return self._get_current_b()
+
+    @b.setter
+    def b(self, value: float) -> None:
+        """
+        Set a new fixed b value.
+
+        This only works for markets that were originally created with a fixed
+        (non-adaptive) b. If the market uses a dynamic b strategy (callable),
+        attempting to set b will raise an AttributeError.
+        """
+        if callable(self._b):
+            raise AttributeError(
+                "Cannot directly set 'b' on a market that uses adaptive/dynamic liquidity. "
+                "This market was created with a b strategy (e.g. LinearVolumeB). "
+                "You can only change b on markets that use a fixed numeric value."
+            )
+        self._b = float(value)
+
+    def _get_current_b(self) -> float:
+        """Internal: get the liquidity value for the current state."""
+        if callable(self._b):
+            b_val = self._b(self.q)
+            if b_val <= 0:
+                raise ValueError("Adaptive b function must return a positive value")
+            return float(b_val)
+        return float(self._b)
+
+    @property
+    def is_adaptive_b(self) -> bool:
+        """Returns True if this market uses a dynamic/adaptive b strategy."""
+        return callable(self._b)
+
+    def set_b_strategy(self, strategy: Any) -> None:
+        """
+        Replace the current b (fixed or adaptive) with a new strategy or fixed value.
+
+        This is the recommended way to change liquidity behavior at runtime
+        for both fixed and adaptive markets.
+        """
+        self._b = strategy
 
     # ------------------------------------------------------------------
     # Numerically stable helpers (see DESIGN.md for rationale)
@@ -152,7 +211,8 @@ class BinaryLMSRMarket:
         tuple[float, float]
             (p_yes, p_no) — current market prices.
         """
-        q_over_b = q / self.b
+        b = self._get_current_b()
+        q_over_b = q / b
         lse = self._lse(q_over_b)
         p_yes = float(np.exp(q_over_b[0] - lse))
         p_no = float(np.exp(q_over_b[1] - lse))
@@ -184,13 +244,14 @@ class BinaryLMSRMarket:
         if np.allclose(delta, 0.0):
             return 0.0
 
+        b = self._get_current_b()
         p_yes, p_no = self._stable_prices(self.q)
         p = np.array([p_yes, p_no], dtype=float)
 
-        exp_term = np.exp(delta / self.b)
+        exp_term = np.exp(delta / b)
         weighted_sum = float(np.sum(p * exp_term))
 
-        return self.b * np.log(weighted_sum)
+        return b * np.log(weighted_sum)
 
     def _cost(self, q: npt.NDArray[np.floating]) -> float:
         """
@@ -209,8 +270,9 @@ class BinaryLMSRMarket:
         float
             The absolute cost C(q).
         """
-        q_over_b = q / self.b
-        return self.b * self._lse(q_over_b)
+        b = self._get_current_b()
+        q_over_b = q / b
+        return b * self._lse(q_over_b)
 
     # ------------------------------------------------------------------
     # Public API

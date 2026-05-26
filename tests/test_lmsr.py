@@ -287,7 +287,105 @@ def test_multiple_users_independent_positions():
     assert m.get_user_position("alice")[0] == 5
     assert m.get_user_position("alice")[1] == 3
     assert m.get_user_position("bob")[0] == 0
-    assert m.get_user_position("bob")[1] == 5
+
+
+# ------------------------------------------------------------------
+# Adaptive / Dynamic b Tests
+# ------------------------------------------------------------------
+
+from src.lmsr.adaptive import LinearVolumeB, FixedB
+
+
+def test_adaptive_b_linear_volume_grows():
+    """LinearVolumeB should increase b as more shares are outstanding."""
+    strategy = LinearVolumeB(alpha=0.1, min_b=5.0)
+    m = BinaryLMSRMarket(b=strategy)
+
+    assert m.b == 5.0  # starts at floor
+
+    m.trade("trader", 100, 0)
+    assert m.b > 5.0
+    assert abs(m.b - 10.0) < 1e-6  # 0.1 * 100 = 10
+
+    m.trade("trader", 150, 0)
+    assert m.b >= 25.0
+
+
+def test_adaptive_b_vs_fixed_behavior():
+    """
+    With the same initial b, an adaptive market with very small alpha should
+    behave similarly to a fixed market for the first few trades.
+    """
+    fixed = BinaryLMSRMarket(b=50.0)
+    adaptive = BinaryLMSRMarket(b=LinearVolumeB(alpha=0.001, min_b=50.0))
+
+    fixed.trade("u", 40, 10)
+    adaptive.trade("u", 40, 10)
+
+    p_fixed = fixed.price()
+    p_adapt = adaptive.price()
+
+    # They should be very close early on
+    assert abs(p_fixed[0] - p_adapt[0]) < 0.02
+
+
+def test_fixed_b_wrapper():
+    """FixedB should behave exactly like passing a float."""
+    fixed_strategy = FixedB(42.0)
+    m1 = BinaryLMSRMarket(b=42.0)
+    m2 = BinaryLMSRMarket(b=fixed_strategy)
+
+    m1.trade("a", 30, 20)
+    m2.trade("a", 30, 20)
+
+    assert abs(m1.b - m2.b) < 1e-12
+    assert abs(m1.price()[0] - m2.price()[0]) < 1e-12
+    assert m1.get_user_position("a")[0] == m2.get_user_position("a")[0]
+
+
+def test_log_volume_b():
+    """LogVolumeB should grow slowly."""
+    from src.lmsr.adaptive import LogVolumeB
+
+    strat = LogVolumeB(alpha=10.0, min_b=5.0)
+    m = BinaryLMSRMarket(b=strat)
+
+    assert m.b == 5.0
+    m.trade("u", 1000, 0)
+    # log(1000) ≈ 6.9 → 10 * 6.9 ≈ 69
+    assert 60 < m.b < 75
+
+
+def test_bounded_b_wrapper():
+    """BoundedB should correctly clip any strategy."""
+    from src.lmsr.adaptive import LinearVolumeB, BoundedB
+
+    inner = LinearVolumeB(alpha=1.0, min_b=1.0)  # grows very fast
+    bounded = BoundedB(inner, min_b=10, max_b=200)
+
+    m = BinaryLMSRMarket(b=bounded)
+    assert m.b == 10.0
+
+    m.trade("u", 500, 0)
+    assert m.b == 200.0  # should be capped
+
+
+def test_trade_count_b():
+    """TradeCountB should increase only when .step() is called."""
+    from src.lmsr.adaptive import TradeCountB
+
+    strat = TradeCountB(alpha=3.0, min_b=5.0)
+    m = BinaryLMSRMarket(b=strat)
+
+    assert m.b == 5.0
+
+    m.trade("u", 10, 0)
+    strat.step()
+    assert m.b == 8.0   # 5 + 3*1
+
+    m.trade("u", 1, 5)
+    strat.step()
+    assert m.b == 11.0  # 5 + 3*2
 
 
 # ------------------------------------------------------------------

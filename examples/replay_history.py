@@ -188,6 +188,7 @@ def plot_price_with_volume(
     show: bool = True,
     close_fig: bool = True,
     figsize: tuple = (12, 8),
+    true_p: float | None = None,
 ) -> plt.Figure | None:
     """
     Plot price paths for different b values on top,
@@ -218,6 +219,11 @@ def plot_price_with_volume(
         prices = [s["price_yes"] for s in snapshots]
         ax1.plot(steps, prices, marker='o', markersize=2.5, linewidth=1.3, label=f"b = {b}")
 
+    # Optional reference line for the "true" probability the Kelly bettors were using
+    if true_p is not None:
+        ax1.axhline(true_p, color="#27ae60", linestyle="--", linewidth=2.0, alpha=0.85,
+                    label=f"True p = {true_p:.2f}", zorder=10)
+
     ax1.set_ylabel("Price of Yes")
     ax1.set_title(title)
     ax1.legend(loc="upper left", fontsize=9)
@@ -246,6 +252,96 @@ def plot_price_with_volume(
         plt.close(fig)
 
     return fig if not close_fig else None
+
+
+def plot_price_volume_grid(
+    history: dict[str, Any],
+    results: dict[float, list[dict]],
+    title: str = "Price Path + Volume by b (separate views)",
+    figsize: tuple = (14, 10.5),
+    close_fig: bool = True,
+    true_p: float | None = None,
+) -> plt.Figure | None:
+    """
+    Alternative to plot_price_with_volume for histories with very large individual trades.
+
+    Shows each b value in its own subplot (2x2 grid of price paths) so the
+    reaction to each big trade is clearly visible without 4 lines fighting.
+
+    A single shared volume bar chart (the actual trade sizes) is shown at the bottom.
+    """
+    if not HAS_MATPLOTLIB:
+        print("matplotlib is not installed. Run: pip install matplotlib")
+        return None
+
+    trades = history["trades"]
+    n_steps = len(trades)
+
+    yes_vol = [float(t.get("yes", 0)) for t in trades]
+    no_vol = [float(t.get("no", 0)) for t in trades]
+    steps = list(range(1, n_steps + 1))
+
+    b_list = sorted(results.keys())
+
+    fig = plt.figure(figsize=figsize)
+
+    # Layout: 2x2 price plots on top, full-width volume row at bottom.
+    # Leave some space at the very bottom for the report generator to add the stats table.
+    gs = fig.add_gridspec(
+        3, 2,
+        height_ratios=[2.1, 2.1, 1.15],
+        hspace=0.30,
+        wspace=0.18,
+        bottom=0.24,
+        top=0.92,
+        left=0.055,
+        right=0.945
+    )
+
+    # 2x2 price subplots
+    for i, b in enumerate(b_list):
+        row = i // 2
+        col = i % 2
+        ax = fig.add_subplot(gs[row, col])
+
+        snaps = results[b]
+        prices = [s["price_yes"] for s in snaps]
+
+        ax.plot(steps, prices, marker="o", markersize=1.8, linewidth=1.1, color="#1f77b4")
+
+        if true_p is not None:
+            ax.axhline(true_p, color="#27ae60", linestyle="--", linewidth=1.8, alpha=0.8, zorder=5)
+
+        ax.set_title(f"b = {b}", fontsize=11, fontweight="semibold", pad=4)
+        ax.set_ylim(0, 1.06)
+        ax.grid(True, alpha=0.28)
+        ax.tick_params(labelsize=8)
+
+        if col == 0:
+            ax.set_ylabel("P(Yes)", fontsize=9)
+        if row == 1:
+            ax.set_xlabel("Trade Step", fontsize=9)
+
+    # Shared volume bars at the bottom (spans both columns)
+    vol_ax = fig.add_subplot(gs[2, :])
+    width = 0.55
+    vol_ax.bar([s - width / 2 for s in steps], yes_vol, width=width,
+               color="#2ecc71", alpha=0.78, label="Yes Volume")
+    vol_ax.bar([s + width / 2 for s in steps], no_vol, width=width,
+               color="#e74c3c", alpha=0.78, label="No Volume")
+
+    vol_ax.set_xlabel("Trade Step", fontsize=9)
+    vol_ax.set_ylabel("Shares Traded", fontsize=9)
+    vol_ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
+    vol_ax.grid(True, axis="y", alpha=0.25)
+    vol_ax.tick_params(labelsize=8)
+
+    fig.suptitle(title, fontsize=13, fontweight="bold", y=0.975)
+
+    if close_fig:
+        plt.close(fig)
+
+    return fig
 
 
 if __name__ == "__main__":

@@ -121,6 +121,11 @@ See the [`examples/`](./examples/) directory for ready-made trade histories and 
 - **Calibration Scoring** (`src/lmsr/scoring.py`)  
   Brier score, Log score, and Murphy decomposition.
 
+- **Adaptive Liquidity Strategies** (`src/lmsr/adaptive.py`)  
+  Support for dynamic/adaptive `b` (in addition to classic fixed `b`).
+  Includes `LinearVolumeB`, `LogVolumeB`, `BoundedB`, `TradeCountB`, etc.
+  See the module for details and usage.
+
 ---
 
 ## Getting Started
@@ -178,6 +183,53 @@ compare_b_values(history, b_values=[15, 30, 60, 120])
 ```
 
 You can also use the **Interactive b Explorer** tab in the Streamlit app to load any history and move a slider for `b`.
+
+---
+
+## Fixed vs Adaptive Liquidity (`b`)
+
+By default, `b` is a fixed constant (classic LMSR). However, the library also supports **dynamic/adaptive `b`** strategies. These allow liquidity to change over time — typically growing with trading volume — which helps reduce excessive early volatility (the "thin market problem").
+
+### Basic Usage
+
+```python
+from src.lmsr import BinaryLMSRMarket, LMSRMarketSimulator
+from src.lmsr.adaptive import LinearVolumeB, LogVolumeB, BoundedB
+
+# Fixed b (traditional)
+m_fixed = BinaryLMSRMarket(b=60)
+
+# Adaptive: b grows linearly with total shares, but capped
+adaptive = BoundedB(
+    LinearVolumeB(alpha=0.05, min_b=10),
+    min_b=10,
+    max_b=350
+)
+m_adaptive = BinaryLMSRMarket(b=adaptive)
+
+# Use with the simulator
+sim = LMSRMarketSimulator()
+m = sim.create_market("Test Market", b=LogVolumeB(alpha=10, min_b=8))
+```
+
+### Comparison of Available Strategies
+
+| Class                | Growth Behavior                      | Best For                                      | Stateful?          |
+|----------------------|--------------------------------------|-----------------------------------------------|--------------------|
+| `FixedB` / `ConstantB` | Constant                            | Baseline, classic LMSR                        | No                 |
+| `LinearVolumeB`      | Linear in total shares               | General purpose, most common choice           | No                 |
+| `SqrtVolumeB`        | Square root of total shares          | Slower growth than linear                     | No                 |
+| `LogVolumeB`         | Logarithmic (very slow)              | Long-running or high-volume markets           | No                 |
+| `BoundedB`           | Wrapper that clips any strategy      | Production use (prevent extremes)             | No                 |
+| `TradeCountB`        | Linear in number of trades           | When participation matters more than size     | Yes (use `.step()`) |
+
+### Recommended Strategies
+
+- `LinearVolumeB` — Most common. Good default for many experiments.
+- `LogVolumeB` — Grows very slowly. Excellent for long-running markets.
+- `BoundedB(...)` — Wrap any strategy to enforce hard min/max bounds (highly recommended for real use).
+
+See `src/lmsr/adaptive.py` for the full list, detailed documentation, and more examples.
 
 ---
 
