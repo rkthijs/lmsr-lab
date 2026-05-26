@@ -28,7 +28,6 @@ from typing import Any
 
 from src.lmsr.simulator import LMSRMarketSimulator
 
-
 # ---------------------------------------------------------------------------
 # Core reusable function
 # ---------------------------------------------------------------------------
@@ -66,7 +65,7 @@ def load_history_into_simulator(
         The ID of the newly created market inside the simulator.
     """
     path = Path(history_path)
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         history: dict[str, Any] = json.load(f)
 
     # Prefer values from the history file when available

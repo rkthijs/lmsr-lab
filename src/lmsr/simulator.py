@@ -18,16 +18,15 @@ and early UI work.
 
 from __future__ import annotations
 
+import pickle
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
-
-import pickle
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-from .market import BinaryLMSRMarket
+from .market import BinaryLMSRMarket, BType
 from .scoring import brier_score, log_score
 
 
@@ -128,7 +127,7 @@ class Market:
     title: str
     description: str = ""
     resolution_criteria: str = ""
-    b: float = 20.0
+    b: BType = 20.0
     fee_rate: float = 0.02
     initial_subsidy: float = 0.0  # Market maker's initial capital/subsidy for this market
     status: str = "open"          # "open", "closed", "resolved"
@@ -145,6 +144,16 @@ class Market:
 
     def __post_init__(self):
         self.engine = BinaryLMSRMarket(b=self.b, fee_rate=self.fee_rate)
+
+    @property
+    def current_b(self) -> float:
+        """Current effective liquidity (evaluates the adaptive strategy if present)."""
+        return self.engine.b
+
+    @property
+    def is_adaptive_b(self) -> bool:
+        """Whether this market uses a dynamic/adaptive b strategy."""
+        return self.engine.is_adaptive_b
 
 
 class LMSRMarketSimulator:
@@ -184,13 +193,17 @@ class LMSRMarketSimulator:
         title: str,
         description: str = "",
         resolution_criteria: str = "",
-        b: float = 20.0,
+        b: BType = 20.0,
         fee_rate: float = 0.02,
         initial_subsidy: float = 0.0,
         close_at: datetime | None = None,
     ) -> Market:
         """
         Create a new prediction market.
+
+        The `b` parameter can be either a fixed float (classic LMSR) or a
+        callable that returns dynamic liquidity based on current shares
+        (adaptive / liquidity-sensitive LMSR).
 
         Returns the created Market object (which contains its own engine).
         """
@@ -540,7 +553,7 @@ class LMSRMarketSimulator:
             pickle.dump(self, f)
 
     @classmethod
-    def load(cls, filepath: str | Path) -> "LMSRMarketSimulator":
+    def load(cls, filepath: str | Path) -> LMSRMarketSimulator:
         """
         Load a previously saved simulator from disk.
         """
@@ -549,7 +562,7 @@ class LMSRMarketSimulator:
             raise FileNotFoundError(f"No simulator state found at {path}")
 
         with open(path, "rb") as f:
-            sim: "LMSRMarketSimulator" = pickle.load(f)
+            sim: LMSRMarketSimulator = pickle.load(f)
 
         # Make sure caches exist and are clean after loading
         if not hasattr(sim, "_positions_cache"):
@@ -580,6 +593,12 @@ class LMSRMarketSimulator:
             return {
                 "error": f"Cannot trade on a {market.status} market",
                 "market_status": market.status,
+            }
+
+        # Prevent no-op trades
+        if shares_yes == 0 and shares_no == 0:
+            return {
+                "error": "Trade must have a non-zero number of shares on at least one side (Yes or No).",
             }
 
         engine = market.engine
@@ -641,8 +660,6 @@ class LMSRMarketSimulator:
 
         Positions are always derived from that market's trade history.
         """
-        market = self.get_market(market_id)
-
         cache = self._positions_cache.get(market_id, {})
         if not cache:
             cache = self._recompute_positions(market_id)

@@ -14,10 +14,8 @@ while preserving their original character.
 import json
 import random
 from pathlib import Path
-from typing import Dict, List, Any
 
 from src.lmsr.simulator import LMSRMarketSimulator
-
 
 SHORT_FILES = [
     "balanced_trades.json",
