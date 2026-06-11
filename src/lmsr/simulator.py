@@ -424,9 +424,9 @@ class LMSRMarketSimulator:
         for market in self.markets.values():
             pos = self.get_user_position(market.id, user_id)
             positions[market.id] = {
-                "yes": pos[0],
-                "no": pos[1],
-                "total": pos[0] + pos[1],
+                "yes": float(pos[0]),
+                "no": float(pos[1]),
+                "total": float(pos[0] + pos[1]),
             }
 
             if market.status == "resolved":
@@ -502,18 +502,18 @@ class LMSRMarketSimulator:
         winning = market.resolution_outcome
         idx = 0 if winning == "yes" else 1
 
-        winning_shares_engine = market.engine.q[idx]
-        total_payouts = sum(p.amount for p in market.payouts)
+        winning_shares_engine = float(market.engine.q[idx])
+        total_payouts = float(sum(p.amount for p in market.payouts))
 
-        engine_pl = market.engine.total_revenue - winning_shares_engine
-        calculated_pl = market.engine.total_revenue - total_payouts
+        engine_pl = float(market.engine.total_revenue - winning_shares_engine)
+        calculated_pl = float(market.engine.total_revenue - total_payouts)
 
-        subsidy = market.initial_subsidy
-        remainder = subsidy + market.engine.total_revenue - total_payouts
+        subsidy = float(market.initial_subsidy)
+        remainder = float(subsidy + market.engine.total_revenue - total_payouts)
 
         tolerance = 1e-6
-        payout_match = abs(total_payouts - winning_shares_engine) <= tolerance
-        pl_match = abs(engine_pl - calculated_pl) <= tolerance
+        payout_match = bool(abs(total_payouts - winning_shares_engine) <= tolerance)
+        pl_match = bool(abs(engine_pl - calculated_pl) <= tolerance)
 
         return {
             "market_id": market_id,
@@ -526,8 +526,8 @@ class LMSRMarketSimulator:
             "pl_match": pl_match,
             "initial_subsidy": subsidy,
             "remainder": remainder,
-            "is_valid": payout_match and pl_match,
-            "tolerance": tolerance,
+            "is_valid": bool(payout_match and pl_match),
+            "tolerance": float(tolerance),
         }
 
     # ------------------------------------------------------------------
@@ -738,7 +738,7 @@ class LMSRMarketSimulator:
 
         for user in users:
             pos = self.get_user_position(market.id, user)
-            amount = pos[idx]
+            amount = float(pos[idx])
 
             if amount > 0:
                 payout = Payout(

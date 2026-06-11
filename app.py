@@ -271,10 +271,14 @@ def _show_trade_confirmation_dialog(active_id, user_id, sy, sn, cost, raw_cost, 
 
 
 @st.fragment
-def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: int = 0):
+def _render_market_b_controls_and_price_chart(market, active_id, trades, refresh: int = 0):
     """Fragment that isolates all b-related UI and the dynamic price history chart
     for the currently visible market. Changing b here only reruns this fragment,
     not the rest of the app (Portfolio, Leaderboard, etc.).
+
+    'market' here is a dict from the /markets/{id} JSON response (MarketResponse shape).
+    'trades' is the list of trade dicts from /markets/{id}/trades (already fetched by caller).
+    We avoid any direct simulator Market or .engine access inside this fragment.
     """
     # ------------------------------------------------------------------
     # b Recommendation Calculator
@@ -399,19 +403,19 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: i
                     json={"type": "fixed", "value": float(new_b)},
                 )
                 st.rerun()  # the fragment will pick up the new value on next run via the market dict from the selectbox
-                market.b = float(new_b)
-                st.rerun()   # scoped to this fragment only
 
-    # Price history chart — only for the visible market
-    if market.trades:
+    # Price history chart — only for the visible market (data via API)
+    if trades:
         import pandas as pd
 
         from src.lmsr.market import BinaryLMSRMarket
 
-        temp = BinaryLMSRMarket(b=market.b, fee_rate=market.fee_rate)
+        replay_b = market.get("current_b", 25.0)
+        replay_fee = market.get("fee_rate", 0.02)
+        temp = BinaryLMSRMarket(b=replay_b, fee_rate=replay_fee)
         dyn_prices = []
-        for t in market.trades:
-            temp.trade("__replay__", t.shares_yes, t.shares_no)
+        for t in trades:
+            temp.trade("__replay__", t["shares_yes"], t["shares_no"])
             p_yes, _ = temp.price()
             dyn_prices.append(round(p_yes, 4))
 
@@ -436,14 +440,14 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: i
             )
             st.caption("Install altair for better charts (fixed y-axis [0,1])")
 
-        st.caption(f"Price path recomputed with current b = {market.engine.b:.1f}")
+        st.caption(f"Price path recomputed with current b = {replay_b:.1f}")
 
-        # Volume per step (Yes vs No)
-        if market.trades:
+        # Volume per step (Yes vs No) — use the trades list (dicts from API)
+        if trades:
             vol_df = pd.DataFrame({
-                "Trade #": list(range(1, len(market.trades) + 1)),
-                "Yes Volume": [t.shares_yes for t in market.trades],
-                "No Volume": [t.shares_no for t in market.trades],
+                "Trade #": list(range(1, len(trades) + 1)),
+                "Yes Volume": [t["shares_yes"] for t in trades],
+                "No Volume": [t["shares_no"] for t in trades],
             })
 
             try:
@@ -480,63 +484,82 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: i
     else:
         st.caption("No trades yet — the market starts at 50/50. Place the first trade to see the price chart.")
 
-    # Current price (cheap)
-    p_yes, p_no = market.engine.price()
-    st.caption(f"**Current price:** Yes {p_yes:.4f}  |  No {p_no:.4f}")
+    # Current price (from the market response dict, which came from the engine via API)
+    prices = market.get("current_prices", [0.5, 0.5])
+    st.caption(f"**Current price:** Yes {prices[0]:.4f}  |  No {prices[1]:.4f}")
 
 
 @st.fragment
-def _render_portfolio_tab(sim, user_id):
+def _render_portfolio_tab(user_id):
     """Isolated fragment for the Portfolio tab.
     Only reruns when something inside this fragment changes.
+    Data comes from the API layer (portfolio + markets list for titles).
     """
     st.header(f"Portfolio for {user_id}")
     st.caption("See your positions, balance, and realized performance across all markets.")
 
-    portfolio = sim.get_user_portfolio(user_id)
+    # Primary data via API
+    port_resp = api_client.get(f"/users/{user_id}/portfolio").json()
+    bal_resp = api_client.get(f"/users/{user_id}/balance").json()
 
-    st.metric("Current Balance", f"{portfolio.balance:,.2f}")
-    st.metric("Total Payouts Received", f"{portfolio.total_payouts_received:,.2f}")
-    st.metric("Realized PnL (from resolutions)", f"{portfolio.realized_pnl:,.2f}")
+    balance = port_resp.get("balance", bal_resp.get("balance", 0.0))
+    st.metric("Current Balance", f"{balance:,.2f}")
+    st.metric("Total Payouts Received", f"{port_resp.get('total_payouts_received', 0):,.2f}")
+    st.metric("Realized PnL (from resolutions)", f"{port_resp.get('realized_pnl', 0):,.2f}")
 
     st.subheader("Positions Across Markets")
 
-    if portfolio.positions:
+    # Build id->title map from API list (cheaper than per-market gets)
+    try:
+        markets_list = api_client.get("/markets").json()
+        id_to_title = {m["id"]: m.get("title", m["id"]) for m in markets_list}
+        id_to_status = {m["id"]: m.get("status", "?") for m in markets_list}
+    except Exception:
+        id_to_title = {}
+        id_to_status = {}
+
+    positions = port_resp.get("positions", {})
+    if positions:
         pos_rows = []
-        for mid, pos in portfolio.positions.items():
-            m = sim.get_market(mid)
+        for mid, pos in positions.items():
             pos_rows.append({
-                "Market": m.title,
-                "Status": m.status,
-                "Yes": pos["yes"],
-                "No": pos["no"],
-                "Total Exposure": pos["total"],
+                "Market": id_to_title.get(mid, mid),
+                "Status": id_to_status.get(mid, "?"),
+                "Yes": pos.get("yes", 0),
+                "No": pos.get("no", 0),
+                "Total Exposure": pos.get("total", 0),
             })
         st.dataframe(pos_rows, width="stretch", hide_index=True)
     else:
         st.info("You have not traded in any markets yet.")
 
     st.subheader("Payout History")
-    user_payouts = sim.get_user_payouts(user_id)
-    if user_payouts:
-        payout_rows = [
-            {
-                "Market": sim.get_market(p.market_id).title,
-                "Outcome": p.outcome.upper(),
-                "Amount Received": p.amount,
-                "Date": p.timestamp.strftime("%Y-%m-%d %H:%M"),
-            }
-            for p in user_payouts
-        ]
-        st.dataframe(payout_rows, width="stretch", hide_index=True)
-    else:
+    # Payout history detail still uses simulator for the demo (full Payout records with timestamps/titles).
+    # The core trading + balance/portfolio summary are API-driven.
+    try:
+        user_payouts = sim.get_user_payouts(user_id)
+        if user_payouts:
+            payout_rows = [
+                {
+                    "Market": sim.get_market(p.market_id).title,
+                    "Outcome": p.outcome.upper(),
+                    "Amount Received": p.amount,
+                    "Date": p.timestamp.strftime("%Y-%m-%d %H:%M"),
+                }
+                for p in user_payouts
+            ]
+            st.dataframe(payout_rows, width="stretch", hide_index=True)
+        else:
+            st.write("No payouts received yet.")
+    except Exception:
         st.write("No payouts received yet.")
 
 
 @st.fragment
-def _render_leaderboard_tab(sim):
+def _render_leaderboard_tab():
     """Isolated fragment for the Leaderboard tab.
     Only reruns when the radio or other widgets inside change.
+    Data fetched via the API /leaderboard endpoint.
     """
     st.header("Global Leaderboard")
     st.caption("See who has been most accurate (Brier / Log) or profitable (PnL) across resolved markets.")
@@ -566,7 +589,8 @@ def _render_leaderboard_tab(sim):
         This is why PnL is almost always positive in the leaderboard.
         """)
 
-    board = sim.get_leaderboard(metric=metric_map[metric], min_resolved_trades=1)
+    # Via API (supports query params)
+    board = api_client.get("/leaderboard", params={"metric": metric_map[metric], "min_resolved_trades": 1}).json()
 
     if board:
         st.dataframe(board, width="stretch", hide_index=True)
@@ -579,23 +603,26 @@ def _render_leaderboard_tab(sim):
 # =====================
 with tab_trade:
     active_id = st.session_state.active_market_id
-    market = sim.get_market(active_id)
+    market = api_client.get(f"/markets/{active_id}").json()
 
-    st.header(market.title)
-    if market.resolution_criteria:
-        st.caption(f"**Resolution Criteria:** {market.resolution_criteria}")
+    # Fetch trades via API for charts (the basic market response doesn't include full trade list)
+    trades = api_client.get(f"/markets/{active_id}/trades").json() if active_id else []
+
+    st.header(market["title"])
+    if market.get("resolution_criteria"):
+        st.caption(f"**Resolution Criteria:** {market['resolution_criteria']}")
 
     # Prominent callout for adaptive b markets (very useful for the soft demo)
-    if market.engine.is_adaptive_b:
+    if market.get("is_adaptive"):
         st.info(
             f"**Adaptive Liquidity Active** — This market uses a dynamic `b` strategy "
-            f"that grows with trading volume. Current b = **{market.engine.b:.1f}** "
+            f"that grows with trading volume. Current b = **{market.get('current_b', 0):.1f}** "
             f"(started at the floor of 10.0). This reduces early volatility compared to a fixed low b."
         )
 
     cols = st.columns([1, 1, 1, 1])
     with cols[0]:
-        st.metric("Status", market.status.upper())
+        st.metric("Status", market.get("status", "open").upper())
     with cols[1]:
         st.metric("Trades", market.get("total_trades", 0))
     with cols[2]:
@@ -617,7 +644,7 @@ with tab_trade:
     # Changing b here only reruns this fragment — Portfolio, Leaderboard and
     # other markets are not recomputed.
     _render_market_b_controls_and_price_chart(
-        market, active_id, sim, refresh=st.session_state.trade_counter
+        market, active_id, trades, refresh=st.session_state.trade_counter
     )
 
     if market.get("status") == "open":
@@ -643,18 +670,24 @@ with tab_trade:
                 help="Positive = buy No, Negative = sell No"
             )
 
-        cost, _ = market.engine.quote(sy, sn)
+        # Accurate preview using the dedicated /quote endpoint (pure, no user needed)
+        q = api_client.get(
+            f"/markets/{active_id}/quote",
+            params={"shares_yes": sy, "shares_no": sn},
+        ).json()
+        cost = q["effective_cost"]
         st.caption(f"Est. cost: **{cost:.2f}**")
 
-        # Live preview based on the trade inputs (no separate fields)
+        # Live preview based on the trade inputs (data from API quote)
         if sy != 0 or sn != 0:
             st.markdown("**Expected Impact & Slippage**")
-            impact = market.engine.instantaneous_impact(sy, sn)
-            slip = market.engine.slippage(sy, sn)
+            price_after = q.get("price_after", [0.5, 0.5])
+            impact = q.get("impact", [0.0, 0.0])
+            slip_val = q.get("slippage", 0.0)
 
-            st.write(f"**Price after trade:** {impact['price_after'][0]:.4f} / {impact['price_after'][1]:.4f}")
-            st.write(f"**Impact on Yes:** {impact['impact'][0]:+.4f}")
-            st.write(f"**Slippage:** {slip['slippage']:.4f}")
+            st.write(f"**Price after trade:** {price_after[0]:.4f} / {price_after[1]:.4f}")
+            st.write(f"**Impact on Yes:** {impact[0]:+.4f}")
+            st.write(f"**Slippage:** {slip_val:.4f}")
 
             # Payout multiplier
             if cost > 0:
@@ -704,40 +737,63 @@ with tab_trade:
 
     # Positions
     st.subheader("Positions in this Market")
-    st.caption("Your current holdings in the selected market.")
-    your_pos = sim.get_user_position(active_id, user_id)
+    st.caption("Your current holdings in the selected market (via observe).")
+    # User-specific position always via API observe for consistency with TradingAgent / bots
+    obs_here = api_client.get(f"/markets/{active_id}/observe", params={"user_id": user_id}).json()
+    your_pos = [obs_here["position"]["yes"], obs_here["position"]["no"]]
     st.write(f"**You** — Yes: {your_pos[0]:.1f} | No: {your_pos[1]:.1f}")
 
+    # Cross-user positions table (demo visibility of market state). Uses direct sim because it needs
+    # per-trader positions for all participants; this is read-only "admin/demo" view, not a trading action.
+    # (A full /markets/{id}/positions endpoint could be added later for pure remote clients.)
     pos_data = []
-    for t in market.trades:
-        p = sim.get_user_position(active_id, t.user_id)
-        pos_data.append({"User": t.user_id, "Yes": round(p[0], 1), "No": round(p[1], 1)})
+    try:
+        mkt_for_traders = sim.get_market(active_id)
+        for t in mkt_for_traders.trades:
+            p = sim.get_user_position(active_id, t.user_id)
+            pos_data.append({"User": t.user_id, "Yes": round(p[0], 1), "No": round(p[1], 1)})
+    except Exception:
+        # Fallback: at least show that the current user traded
+        if your_pos[0] or your_pos[1]:
+            pos_data.append({"User": user_id, "Yes": round(your_pos[0], 1), "No": round(your_pos[1], 1)})
 
     if pos_data:
         st.dataframe(pos_data, width="stretch", hide_index=True)
+    else:
+        st.info("No trades recorded yet for positions.")
 
     st.divider()
 
     # Resolution + Scoring (now using stored scores when possible)
-    if market.status == "open":
+    # Resolve action goes through the API; display of full scores/payouts for demo uses sim (read-only views).
+    if market.get("status") == "open":
         st.subheader("Resolve Market")
         st.caption("Resolve the market to see final payouts and calibration scores.")
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Resolve to Yes", type="secondary"):
-                res = sim.resolve_market(active_id, "yes")
-                st.success(f"Resolved to Yes. MM P/L: {res['market_maker_pl']:.4f}")
+                res = api_client.post(f"/markets/{active_id}/resolve", json={"outcome": "yes"}).json()
+                mm_pl = res.get("market_maker_pl", res.get("pl", 0.0))
+                st.success(f"Resolved to Yes. MM P/L: {mm_pl:.4f}")
                 st.rerun()
         with c2:
             if st.button("Resolve to No", type="secondary"):
-                res = sim.resolve_market(active_id, "no")
-                st.success(f"Resolved to No. MM P/L: {res['market_maker_pl']:.4f}")
+                res = api_client.post(f"/markets/{active_id}/resolve", json={"outcome": "no"}).json()
+                mm_pl = res.get("market_maker_pl", res.get("pl", 0.0))
+                st.success(f"Resolved to No. MM P/L: {mm_pl:.4f}")
                 st.rerun()
     else:
         st.subheader("Resolution & Stored Scores")
 
-        st.metric("Market Maker Final P/L", f"{market.engine.total_revenue - sum(p.amount for p in market.payouts):.4f}")
-        st.caption(f"Total fees/spread earned: {market.engine.total_fees_earned:,.2f}")
+        # For the resolved view numbers we fall back to sim (the engine state after resolve is authoritative for demo display)
+        try:
+            mkt_res = sim.get_market(active_id)
+            eng = mkt_res.engine
+            payout_sum = sum(p.amount for p in mkt_res.payouts)
+            st.metric("Market Maker Final P/L", f"{eng.total_revenue - payout_sum:.4f}")
+            st.caption(f"Total fees/spread earned: {eng.total_fees_earned:,.2f}")
+        except Exception:
+            st.caption("Resolution details available via simulator for this demo view.")
 
         stored_scores = sim.get_scores(active_id)
         if stored_scores:
@@ -758,13 +814,13 @@ with tab_trade:
 # TAB 2: MY PORTFOLIO
 # =====================
 with tab_portfolio:
-    _render_portfolio_tab(sim, user_id)
+    _render_portfolio_tab(user_id)
 
 # =====================
 # TAB 3: LEADERBOARD
 # =====================
 with tab_leaderboard:
-    _render_leaderboard_tab(sim)
+    _render_leaderboard_tab()
 
 # =====================
 # TAB 4: INTERACTIVE b EXPLORER

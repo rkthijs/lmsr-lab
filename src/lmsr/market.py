@@ -328,7 +328,7 @@ class BinaryLMSRMarket:
         else:
             effective_cost = raw_cost * (1 - self.fee_rate)
 
-        return effective_cost, raw_cost
+        return float(effective_cost), float(raw_cost)
 
     def trade(
         self, user_id: str, shares_yes: float = 0.0, shares_no: float = 0.0
@@ -394,11 +394,11 @@ class BinaryLMSRMarket:
         new_prices = self.price()
 
         return {
-            "cost": effective_cost,
-            "raw_cost": raw_cost,
-            "fee": fee,
+            "cost": float(effective_cost),
+            "raw_cost": float(raw_cost),
+            "fee": float(fee),
             "new_prices": new_prices,
-            "user_position": self.user_positions[user_id].copy(),
+            "user_position": [float(x) for x in self.user_positions[user_id]],
         }
 
     def instantaneous_impact(
@@ -429,11 +429,11 @@ class BinaryLMSRMarket:
         new_q = self.q + delta
 
         p_after = self._stable_prices(new_q)
-        impact_yes = p_after[0] - p_before[0]
+        impact_yes = float(p_after[0] - p_before[0])
 
         return {
-            "price_before": p_before,
-            "price_after": p_after,
+            "price_before": tuple(float(x) for x in p_before),
+            "price_after": tuple(float(x) for x in p_after),
             "impact": (impact_yes, -impact_yes),
         }
 
@@ -464,8 +464,8 @@ class BinaryLMSRMarket:
         slip = abs(avg_price - p_before)
 
         return {
-            "average_execution_price": avg_price,
-            "slippage": slip,
+            "average_execution_price": float(avg_price),
+            "slippage": float(slip),
         }
 
     def get_user_position(self, user_id: str) -> npt.NDArray[np.floating]:
@@ -509,14 +509,14 @@ class BinaryLMSRMarket:
         """
         outcome = outcome.lower()
         idx = 0 if outcome == "yes" else 1
-        winning_shares = self.q[idx]
+        winning_shares = float(self.q[idx])
         payout = winning_shares
-        pl = self.total_revenue - payout
+        pl = float(self.total_revenue - payout)
 
         return {
             "market_maker_pl": pl,
-            "total_revenue": self.total_revenue,
-            "total_fees_earned": self.total_fees_earned,
+            "total_revenue": float(self.total_revenue),
+            "total_fees_earned": float(self.total_fees_earned),
             "payout": payout,
             "winning_outcome": outcome,
         }

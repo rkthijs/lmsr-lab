@@ -85,6 +85,7 @@ class MarketResponse(BaseModel):
     is_adaptive: bool
     total_trades: int
     total_fees_earned: float
+    fee_rate: float = 0.02
 
 
 # Global simulator instance (in-memory for now; later can be DB-backed)
@@ -139,6 +140,7 @@ def _market_to_response(market) -> MarketResponse:
         is_adaptive=market.is_adaptive_b,
         total_trades=len(market.trades),
         total_fees_earned=eng.total_fees_earned,
+        fee_rate=market.fee_rate,
     )
 
 
@@ -243,11 +245,37 @@ def quote_trade(market_id: str, shares_yes: float = 0.0, shares_no: float = 0.0)
     except KeyError:
         raise HTTPException(404, f"Market {market_id} not found") from None
     effective, raw = market.engine.quote(shares_yes, shares_no)
+    impact = market.engine.instantaneous_impact(shares_yes, shares_no)
+    slip = market.engine.slippage(shares_yes, shares_no)
     return {
         "effective_cost": effective,
         "raw_cost": raw,
         "fee": effective - raw,
+        "price_after": list(impact["price_after"]),
+        "impact": list(impact["impact"]),
+        "slippage": slip.get("slippage", 0.0),
     }
+
+
+@app.get("/markets/{market_id}/trades")
+def get_market_trades(market_id: str):
+    """Return list of trades for the market (for charts etc in the demo)."""
+    sim = get_sim()
+    try:
+        market = sim.get_market(market_id)
+    except KeyError:
+        raise HTTPException(404, f"Market {market_id} not found") from None
+    return [
+        {
+            "id": t.id,
+            "user_id": t.user_id,
+            "shares_yes": t.shares_yes,
+            "shares_no": t.shares_no,
+            "price_after_yes": t.price_after_yes,
+            "price_after_no": t.price_after_no,
+        }
+        for t in market.trades
+    ]
 
 
 @app.get("/users/{user_id}/portfolio")
