@@ -101,7 +101,7 @@ See `src/lmsr/simulator.py`:
 - `Market` — metadata + `BinaryLMSRMarket` engine + lists of trades/payouts/scores + status
 - `User` — id, balance (default 1000), display_name
 - `UserPortfolio` — aggregated view across all markets (positions, realized PnL, counts)
-- `LMSRMarketSimulator` — multi-market orchestrator, position cache, leaderboard, save/load (pickle)
+- `LMSRMarketSimulator` — multi-market orchestrator, position cache, leaderboard, optional SQLite persistence (db_path) + legacy pickle support
 
 **Important invariant**: Positions are always **recomputed** from the trade log (`_recompute_positions`). The engine also maintains its own `user_positions` only for the “insufficient shares to sell” guard.
 
@@ -275,7 +275,7 @@ simulator.py   — Application layer
                  • Derived positions + UserPortfolio
                  • Global leaderboard
                  • Accounting identity check
-                 • Pickle persistence + replay
+                 • Optional SQLite persistence (db_path) + legacy pickle support + replay
 ```
 
 Examples and the Streamlit app (`app.py`) consume this API.

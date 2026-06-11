@@ -208,3 +208,19 @@ lmsr serve
 ```
 
 Full details and request/response examples are in `src/lmsr/api.py` (OpenAPI docs available at /docs when running).
+
+## Persistence in Examples & Experiments
+
+All the example scripts (replay, experiments, trading_agent, etc.) accept or can be easily modified to use a persistent database:
+
+```python
+from src.lmsr import LMSRMarketSimulator
+
+sim = LMSRMarketSimulator(db_path="experiment_run.db")
+# ... run your sweeps or agents ...
+# On the next run with the same db_path you will see the previous state.
+```
+
+This is especially useful when you want to continue an experiment across multiple Python sessions or inspect the state with the `lmsr` CLI or the Streamlit demo later.
+
+The demo / `lmsr serve` uses `lmsr_demo.db` by default so your work survives restarts. Use `db_path=":memory:"` in tests for isolation.

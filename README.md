@@ -117,6 +117,7 @@ See the [`examples/`](./examples/) directory for ready-made trade histories and 
   - User balances and portfolio tracking
   - Accounting identity verification
   - Leaderboard
+  - Optional SQLite persistence (`db_path=...`) — see Persistence section below. The in-memory mode (default) and pickle `save`/`load` remain available for experiments.
 
 - **Calibration Scoring** (`src/lmsr/scoring.py`)  
   Brier score, Log score, and Murphy decomposition.
@@ -144,7 +145,8 @@ The app includes live trading, portfolio views, stored scoring, and a global lea
 ```python
 from src.lmsr.simulator import LMSRMarketSimulator
 
-sim = LMSRMarketSimulator()
+sim = LMSRMarketSimulator()                    # pure in-memory (default)
+# sim = LMSRMarketSimulator(db_path="my.db")    # durable SQLite (state survives restarts)
 
 # Create a market with subsidy ≈ 1000 (educational default)
 m = sim.create_market(
@@ -313,6 +315,40 @@ See `src/lmsr/adaptive.py` for the full list, detailed documentation, and more e
 
 ---
 
+## Persistence (New)
+
+By default `LMSRMarketSimulator()` is fully in-memory (fast for tests and experiments). For durable storage (state survives restarts of the demo, API server, or your scripts) you can pass a `db_path`:
+
+```python
+from src.lmsr import LMSRMarketSimulator
+
+# File-backed (recommended for the demo / long-running use)
+sim = LMSRMarketSimulator(db_path="my_simulation.db")
+
+# Or an in-memory DB (great for isolated tests)
+sim = LMSRMarketSimulator(db_path=":memory:")
+```
+
+**What gets persisted**
+- Markets (metadata + adaptive strategy parameters)
+- Trades (the immutable append-only log)
+- User balances
+- Payouts and per-trade calibration scores on resolution
+
+On startup with a `db_path`, the simulator **replays** the trade history into the LMSR engines so that positions, prices, and the sell-guard state are derived exactly as described in `DESIGN.md`. This keeps the on-disk format simple and auditable.
+
+**The demo / API server**
+The Streamlit demo and `lmsr serve` now use a local SQLite file (`lmsr_demo.db` in the current directory) by default. Your markets, trades, and balances will survive restarting the server or the Streamlit app.
+
+**Migration / compatibility**
+- Old pickle `save()` / `load()` still work for full object snapshots (useful for experiments).
+- Passing `db_path=None` (the default) gives the classic pure in-memory behavior.
+- The relational schema follows the one documented in `DESIGN.md` (with TEXT ids for compatibility with the existing "m1"/"alice" style identifiers).
+
+See the docstring of `LMSRMarketSimulator` and `src/lmsr/db.py` for more details.
+
+---
+
 ## Project Structure
 
 ```
@@ -321,7 +357,11 @@ See `src/lmsr/adaptive.py` for the full list, detailed documentation, and more e
 ├── src/lmsr/
 │   ├── market.py               # Core LMSR engine (numerically stable)
 │   ├── scoring.py              # Brier, Log score, Murphy decomposition
-│   └── simulator.py            # Multi-market system + User/Trade/Payout/Score models
+│   ├── simulator.py            # Multi-market system + User/Trade/Payout/Score models
+│   ├── db.py                   # SQLite persistence backend (new)
+│   ├── api.py                  # FastAPI layer
+│   ├── cli.py                  # Small CLI (replay, compare, serve)
+│   └── agent.py                # TradingAgent for bots / RL
 ├── examples/
 │   ├── trade_histories/        # Ready-made histories (including Kelly + rug pulls)
 │   └── replay_history.py       # Tools to explore different b values

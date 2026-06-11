@@ -8,7 +8,7 @@ Main components:
 - `BinaryLMSRMarket`: The core numerically stable LMSR engine.
   Supports both **fixed** `b` and **dynamic/adaptive** `b` (see `adaptive.py`).
 - `LMSRMarketSimulator`: Multi-market system with users, payouts, scoring,
-  portfolio tracking, and accounting verification.
+  portfolio tracking, accounting verification, and optional SQLite persistence.
 - `TradingAgent`: Ergonomic high-level wrapper for bots, RL agents, and
   automated traders (see `agent.py`). Recommended for programmatic use.
 - Scoring utilities (Brier score, Log score, Murphy decomposition).
@@ -17,7 +17,8 @@ Main components:
 Example (direct simulator use)
 ------------------------------
 >>> from src.lmsr import LMSRMarketSimulator, LinearVolumeB, BoundedB
->>> sim = LMSRMarketSimulator()
+>>> sim = LMSRMarketSimulator()                    # in-memory (default)
+>>> # sim = LMSRMarketSimulator(db_path="run.db")  # durable SQLite
 >>> m = sim.create_market("Will revenue beat target?", b=40.0)
 >>> sim.place_trade(m.id, "alice", 12, 0)
 >>> sim.resolve_market(m.id, "yes")
