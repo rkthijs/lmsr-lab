@@ -9,11 +9,13 @@ Main components:
   Supports both **fixed** `b` and **dynamic/adaptive** `b` (see `adaptive.py`).
 - `LMSRMarketSimulator`: Multi-market system with users, payouts, scoring,
   portfolio tracking, and accounting verification.
+- `TradingAgent`: Ergonomic high-level wrapper for bots, RL agents, and
+  automated traders (see `agent.py`). Recommended for programmatic use.
 - Scoring utilities (Brier score, Log score, Murphy decomposition).
 - Adaptive liquidity strategies (`LinearVolumeB`, `LogVolumeB`, `BoundedB`, etc.).
 
-Example
--------
+Example (direct simulator use)
+------------------------------
 >>> from src.lmsr import LMSRMarketSimulator, LinearVolumeB, BoundedB
 >>> sim = LMSRMarketSimulator()
 >>> m = sim.create_market("Will revenue beat target?", b=40.0)
@@ -23,6 +25,18 @@ Example
 # Using adaptive liquidity
 >>> adaptive = BoundedB(LinearVolumeB(alpha=0.05), min_b=10, max_b=300)
 >>> m2 = sim.create_market("Adaptive Market", b=adaptive)
+
+Bot / Agent ergonomic usage
+---------------------------
+>>> from src.lmsr import LMSRMarketSimulator, TradingAgent
+>>> from src.lmsr.adaptive import LinearVolumeB
+>>> sim = LMSRMarketSimulator()
+>>> agent = TradingAgent(sim, "my_rl_bot")
+>>> m = agent.create_market("Will it rain tomorrow?", b=LinearVolumeB(0.1))
+>>> agent.buy_yes(m.id, shares=30)
+>>> prices = agent.get_prices(m.id)
+>>> pos = agent.get_position(m.id)
+>>> print("Current b:", agent.get_current_b(m.id))  # works with adaptive
 """
 
 from .adaptive import (
@@ -35,6 +49,7 @@ from .adaptive import (
     SqrtVolumeB,
     TradeCountB,
 )
+from .agent import TradingAgent
 from .market import BinaryLMSRMarket
 from .scoring import (
     ForecasterScores,
@@ -73,6 +88,7 @@ __all__ = [  # noqa: RUF022 -- logical grouping (core, dataclasses, scoring, ada
     "TradeCountB",
     "User",
     "UserPortfolio",
+    "TradingAgent",
     "brier_decomposition",
     "brier_score",
     "log_score",

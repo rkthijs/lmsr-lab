@@ -395,3 +395,102 @@ def test_global_leaderboard_pnl():
     loser = next((e for e in board if e["user_id"] == "loser"), None)
     if loser:
         assert loser["total_pnl"] <= 0
+
+
+# ------------------------------------------------------------------
+# TradingAgent ergonomics (bot / agent API)
+# ------------------------------------------------------------------
+
+from src.lmsr.agent import TradingAgent
+from src.lmsr.adaptive import LinearVolumeB, BoundedB
+
+
+def test_trading_agent_basic_usage():
+    """TradingAgent should provide ergonomic access for a single user_id."""
+    sim = LMSRMarketSimulator()
+    agent = TradingAgent(sim, "bot_1", display_name="Test Bot")
+
+    # Create market
+    m = agent.create_market("Will the feature ship?", b=30.0)
+    assert m.id in [mm.id for mm in agent.list_markets()]
+
+    # Trade using convenience methods
+    res = agent.buy_yes(m.id, shares=15)
+    assert "cost" in res
+    assert res["cost"] > 0
+
+    pos = agent.get_position(m.id)
+    assert pos[0] == 15.0
+    assert pos[1] == 0.0
+
+    prices = agent.get_prices(m.id)
+    assert len(prices) == 2
+    assert abs(sum(prices) - 1.0) < 1e-9
+
+    # Balance and portfolio
+    assert agent.get_balance() < 1000.0  # started with default 1000
+    portfolio = agent.get_portfolio()
+    assert portfolio.user_id == "bot_1"
+    assert m.id in portfolio.positions
+
+    # Adaptive b awareness
+    adaptive = BoundedB(LinearVolumeB(alpha=0.1, min_b=5), min_b=5, max_b=100)
+    m2 = agent.create_market("Adaptive test market", b=adaptive)
+    assert agent.is_adaptive_b(m2.id) is True
+    assert agent.get_current_b(m2.id) >= 5.0
+
+    # Quote (no execution)
+    q = agent.quote(m2.id, shares_yes=10)
+    assert "effective_cost" in q
+    assert q["fee"] >= 0
+
+    # Observe helper (RL / bot friendly state) — test on the market where we actually traded
+    obs = agent.observe(m.id)
+    assert obs["market_id"] == m.id
+    assert "prices" in obs
+    assert len(obs["prices"]) == 2
+    assert abs(sum(obs["prices"]) - 1.0) < 1e-9
+    assert "current_b" in obs
+    assert "position" in obs
+    assert obs["position"]["yes"] == 15.0
+    assert "balance" in obs
+    assert "num_trades" in obs
+    assert obs["num_trades"] >= 1
+
+
+def test_trading_agent_sell_and_adaptive_b():
+    """Sells should work and fees_earned should increase for the agent (via underlying engine)."""
+    sim = LMSRMarketSimulator()
+    agent = TradingAgent(sim, "bot_seller")
+
+    m = agent.create_market("Sell test", b=25.0, fee_rate=0.02)
+
+    agent.buy_yes(m.id, shares=20)
+    before_fees = m.engine.total_fees_earned
+
+    agent.sell_yes(m.id, shares=10)
+    after_fees = m.engine.total_fees_earned
+
+    # Fees should have increased from the sell side (spread)
+    assert after_fees > before_fees
+
+    pos = agent.get_position(m.id)
+    assert pos[0] == 10.0
+
+
+def test_trading_agent_resolution():
+    """Agent should be able to resolve markets it participates in (for testing)."""
+    sim = LMSRMarketSimulator()
+    agent = TradingAgent(sim, "resolver_bot")
+
+    m = agent.create_market("Resolve via agent")
+    agent.buy_yes(m.id, shares=5)
+    agent.buy_no(m.id, shares=3)
+
+    result = agent.resolve_market(m.id, "yes")
+    assert result["winning_outcome"] == "yes"
+    assert "accounting_identity" in result
+
+    # After resolution the agent's portfolio should reflect payout
+    portfolio = agent.get_portfolio()
+    assert portfolio.resolved_markets_count >= 1
