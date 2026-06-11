@@ -247,6 +247,23 @@ python examples/experiments.py
 
 Lightweight harness for sweeps (fixed vs adaptive `b`), calibration curves, and scoring comparisons using the simulator + `TradingAgent`. Great for research questions around liquidity and forecaster performance. See the file and `examples/README.md` for usage.
 
+**FastAPI Backend (new)**
+
+The project now includes a FastAPI layer (see plan item for "API layer"):
+
+```bash
+pip install -e ".[api]"
+lmsr serve --port 8000
+# or
+uvicorn lmsr.api:app --reload
+```
+
+Visit http://localhost:8000/docs for interactive OpenAPI UI.
+
+It exposes the full simulator (markets, trades with user_id, observe, portfolio, leaderboard, resolve) and supports both fixed and adaptive `b`. Perfect for remote bots and custom frontends while keeping the Python engine as the source of truth.
+
+See `src/lmsr/api.py` for the implementation and example client snippets.
+
 ---
 
 ## Fixed vs Adaptive Liquidity (`b`)

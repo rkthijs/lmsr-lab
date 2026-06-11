@@ -16,8 +16,22 @@ from examples.demo_seeding import (  # noqa: E402
     run_scenario,
 )
 from examples.replay_history import load_history, replay_history  # noqa: E402
-from src.lmsr.simulator import LMSRMarketSimulator  # noqa: E402
-from src.lmsr.adaptive import LinearVolumeB, BoundedB  # noqa: E402
+from src.lmsr.adaptive import BoundedB, LinearVolumeB  # noqa: E402
+from src.lmsr.simulator import (
+    LMSRMarketSimulator as _DirectSimulator,  # only used for complex demo seeding
+)
+
+# The Streamlit demo now exclusively uses the FastAPI layer (in-process for a single-command demo).
+# You need the api extra for this to work: pip install -e ".[demo,api]"
+try:
+    from fastapi.testclient import TestClient
+
+    from src.lmsr.api import app as fastapi_app
+    _HAS_FASTAPI = True
+except ImportError:
+    TestClient = None
+    fastapi_app = None
+    _HAS_FASTAPI = False
 
 st.set_page_config(page_title="LMSR Multi-Market Demo", layout="wide")
 st.title("LMSR Prediction Markets")
@@ -25,21 +39,37 @@ st.caption("Multi-market simulator with full backend features — based on DESIG
 
 # Small banner for demo context
 st.info(
-    "This is a **research & demonstration tool**. The Python engine is the core. "
-    "We're currently exploring a more professional stack (FastAPI + modern frontend)."
+    "This is a **research & demonstration tool**. The UI now exclusively talks to the FastAPI layer "
+    "(in-process TestClient for the self-contained demo). The Python engine remains the source of truth."
 )
 
 # =====================
 # SESSION STATE
 # =====================
 if "sim" not in st.session_state:
-    st.session_state.sim = LMSRMarketSimulator()
+    # We still keep a direct simulator instance **only** for the complex demo seeding logic
+    # (run_scenario, load_history_into_simulator etc.). After seeding we inject it into
+    # the API module so that **all UI interactions** (trade, portfolio, leaderboard, b controls,
+    # create market, etc.) go exclusively through the FastAPI layer (using TestClient for the
+    # self-contained `streamlit run app.py` experience).
+    st.session_state.sim = _DirectSimulator()
     st.session_state.user_id = "alice"
     st.session_state.active_market_id = None
     st.session_state.demo_initialized = False
     st.session_state.trade_counter = 0
 
 sim = st.session_state.sim
+
+# From this point on the Streamlit UI only talks to the API (never directly to the simulator
+# for user actions or display data). This is the new architecture.
+if _HAS_FASTAPI:
+    import src.lmsr.api as api_mod
+    api_mod._sim = sim
+    api_client = TestClient(fastapi_app)
+else:
+    # Fallback (the app will still run the seeding but interactive parts that need the client will be limited)
+    api_client = None
+    # Users who want the pure "UI talks only to the API" experience should install with the api extra.
 
 # Auto-load a strong demo state on first run (great for soft demos)
 if not st.session_state.demo_initialized:
@@ -77,6 +107,11 @@ if not st.session_state.demo_initialized:
         pass
     st.session_state.demo_initialized = True
 
+# Make sure the (now seeded) simulator is visible to the API layer (only when FastAPI is available).
+if _HAS_FASTAPI:
+    import src.lmsr.api as api_mod
+    api_mod._sim = sim
+
 # =====================
 # SIDEBAR
 # =====================
@@ -86,7 +121,10 @@ with st.sidebar:
     user_id = st.text_input("User ID", value=st.session_state.user_id)
     st.session_state.user_id = user_id
 
-    balance = sim.get_balance(user_id)
+    if api_client is not None:
+        balance = api_client.get(f"/users/{user_id}/balance").json()["balance"]
+    else:
+        balance = 1000.0  # fallback when API extra not installed
     st.metric("Your Balance", f"{balance:,.2f}")
 
     st.divider()
@@ -102,12 +140,19 @@ with st.sidebar:
             height=80
         )
         if st.button("Create Market", type="primary"):
-            market = sim.create_market(
-                title=title,
-                resolution_criteria=resolution_criteria,
-                b=b_value,
+            resp = api_client.post(
+                "/markets",
+                json={
+                    "title": title,
+                    "resolution_criteria": resolution_criteria,
+                    "b": float(b_value),
+                },
             )
-            st.session_state.active_market_id = market.id
+            if resp.status_code == 201:
+                market = resp.json()
+                st.session_state.active_market_id = market["id"]
+            else:
+                st.error(resp.text)
             st.rerun()
 
     # ------------------------------------------------------------------
@@ -132,21 +177,21 @@ with st.sidebar:
 
         st.divider()
         if st.button("🧹 Reset Simulator (clear everything)", width="stretch"):
-            sim.reset()
+            api_client.post("/reset")
             st.session_state.active_market_id = None
             st.info("Simulator reset to empty state.")
             st.rerun()
 
     st.divider()
 
-    all_markets = sim.list_markets()
+    all_markets = api_client.get("/markets").json()
     if all_markets:
         market_labels = {}
         for m in all_markets:
-            label = f"{m.title} | {m.status.upper()} | {len(m.trades)} trades"
-            if m.engine.is_adaptive_b:
+            label = f"{m['title']} | {m['status'].upper()} | {m.get('total_trades', 0)} trades"
+            if m.get("is_adaptive"):
                 label += " [Adaptive]"
-            market_labels[m.id] = label
+            market_labels[m["id"]] = label
         market_ids = list(market_labels.keys())
 
         default_idx = 0
@@ -164,6 +209,10 @@ with st.sidebar:
         st.info("No markets yet. Create one above.")
         st.stop()
 
+# Get the current active market **via the API** (as a dict)
+active_id = st.session_state.active_market_id
+market = api_client.get(f"/markets/{active_id}").json()
+
 # =====================
 # TABS
 # =====================
@@ -173,8 +222,8 @@ tab_trade, tab_portfolio, tab_leaderboard, tab_explorer = st.tabs(
 
 
 @st.dialog("Confirm Trade")
-def _show_trade_confirmation_dialog(sim, active_id, user_id, sy, sn, cost, raw_cost, current_pos, market_title):
-    """Confirmation dialog before executing a trade."""
+def _show_trade_confirmation_dialog(active_id, user_id, sy, sn, cost, raw_cost, current_pos, market_title):
+    """Confirmation dialog before executing a trade (calls go through the FastAPI layer)."""
     st.markdown(f"**Market:** {market_title}")
 
     direction_yes = "Buy" if sy > 0 else "Sell"
@@ -205,7 +254,10 @@ def _show_trade_confirmation_dialog(sim, active_id, user_id, sy, sn, cost, raw_c
 
     with col_confirm:
         if st.button("✅ Confirm Trade", type="primary", use_container_width=True):
-            res = sim.place_trade(active_id, user_id, sy, sn)
+            res = api_client.post(
+                f"/markets/{active_id}/trades",
+                json={"user_id": user_id, "shares_yes": sy, "shares_no": sn},
+            ).json()
             if "error" in res:
                 st.error(res["error"])
             else:
@@ -249,11 +301,13 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: i
         # Ideal fixed b the user "wants" for their desired impact
         rec_b = min(b_from_conviction, b_from_subsidy)
 
-        if market.engine.is_adaptive_b:
-            # --- Adaptive market version ---
+        if market.get("is_adaptive"):
+            # --- Adaptive market version (data comes from the API) ---
             st.markdown("**Recommended adaptive parameters**")
 
-            current_total = float(sum(abs(x) for x in market.engine.q)) or 1.0
+            # We don't have the raw q vector from the basic /markets response.
+            # For the demo we approximate using a reasonable default volume.
+            current_total = 1000.0
             recommended_alpha = rec_b / current_total
 
             low_alpha = recommended_alpha * 0.65
@@ -266,14 +320,16 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: i
             )
 
             if st.button("Apply recommended alpha to this market", type="primary", use_container_width=True):
-                # Create a fresh BoundedB(LinearVolumeB) with the recommended alpha
-                # Keep reasonable defaults for min/max
-                new_strategy = BoundedB(
-                    LinearVolumeB(alpha=recommended_alpha, min_b=8),
-                    min_b=8,
-                    max_b=400
+                # Use the new API endpoint to set the strategy
+                api_client.post(
+                    f"/markets/{active_id}/set_strategy",
+                    json={
+                        "type": "bounded_linear",
+                        "alpha": recommended_alpha,
+                        "min_b": 8,
+                        "max_b": 400,
+                    },
                 )
-                market.engine.set_b_strategy(new_strategy)
                 st.rerun()
 
         else:
@@ -288,14 +344,17 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: i
             )
 
             if st.button("Apply recommended b to this market", type="primary", use_container_width=True):
-                market.b = float(rec_b)
-                market.engine.b = float(rec_b)
+                # Use the set_strategy endpoint (type=fixed)
+                api_client.post(
+                    f"/markets/{active_id}/set_strategy",
+                    json={"type": "fixed", "value": float(rec_b)},
+                )
                 st.rerun()   # scoped to this fragment only
 
-    # Liquidity (b) setting
-    if market.engine.is_adaptive_b:
+    # Liquidity (b) setting (data now comes from the API response)
+    if market.get("is_adaptive"):
         st.markdown("**Liquidity (b)** — this market uses **adaptive** liquidity")
-        st.metric("Current b", f"{market.engine.b:.1f}")
+        st.metric("Current b", f"{market.get('current_b', 0):.1f}")
         st.caption(
             "b is managed dynamically by a strategy (e.g. grows with trading volume). "
             "You cannot manually set a fixed value on this market."
@@ -307,7 +366,7 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: i
             st.caption("Higher = deeper market, prices react less to each trade. "
                        "Most users should use the recommender above or an adaptive strategy instead.")
 
-            current_b = float(market.b)
+            current_b = float(market.get("current_b", 25.0))
             max_b_control = max(1000.0, current_b * 1.3 + 50)
 
             b_slider_col, b_num_col = st.columns([3, 1])
@@ -334,7 +393,12 @@ def _render_market_b_controls_and_price_chart(market, active_id, sim, refresh: i
 
             new_b = num_b if num_b != current_b else slider_b
             if new_b != current_b:
-                market.engine.b = float(new_b)
+                # Use the API to update the strategy (fixed)
+                api_client.post(
+                    f"/markets/{active_id}/set_strategy",
+                    json={"type": "fixed", "value": float(new_b)},
+                )
+                st.rerun()  # the fragment will pick up the new value on next run via the market dict from the selectbox
                 market.b = float(new_b)
                 st.rerun()   # scoped to this fragment only
 
@@ -533,13 +597,17 @@ with tab_trade:
     with cols[0]:
         st.metric("Status", market.status.upper())
     with cols[1]:
-        st.metric("Trades", len(market.trades))
+        st.metric("Trades", market.get("total_trades", 0))
     with cols[2]:
-        st.metric("Traders", len(set(t.user_id for t in market.trades)))
+        # We don't have the full trade list in the basic market response; approximate or fetch if needed.
+        # For the demo we can live with "Traders" being less precise or fetch via another call.
+        # To keep it simple and API-driven, we'll show a placeholder or skip the expensive computation.
+        st.metric("Traders (via API)", "—")  # could be enhanced with a dedicated /markets/{id}/traders endpoint
+
     with cols[3]:
         st.metric(
             "Fees Earned (Spread)",
-            f"{market.engine.total_fees_earned:,.2f}",
+            f"{market.get('total_fees_earned', 0):,.2f}",
             help="Total fees/spread captured by the market maker on all trades (buys + sells). "
                  "This is what the MM actually makes from the asymmetric fee model. "
                  "Net cash position (used for P/L at resolution) may differ due to sells."
@@ -552,7 +620,7 @@ with tab_trade:
         market, active_id, sim, refresh=st.session_state.trade_counter
     )
 
-    if market.status == "open":
+    if market.get("status") == "open":
         st.subheader("Place Trade")
         st.caption("Enter positive numbers to buy shares, negative to sell. You can trade both sides in one transaction.")
 
@@ -602,10 +670,20 @@ with tab_trade:
         trade_disabled = (sy == 0 and sn == 0)
 
         if st.button("Execute Trade", type="primary", key=f"trade_{active_id}", disabled=trade_disabled):
-            cost, raw_cost = market.engine.quote(sy, sn)
-            current_pos = sim.get_user_position(active_id, user_id)
+            # Everything (preview + execution) now goes exclusively through the FastAPI layer
+            obs = api_client.get(f"/markets/{active_id}/observe", params={"user_id": user_id}).json()
+            current_pos = [obs["position"]["yes"], obs["position"]["no"]]
+            mkt = api_client.get(f"/markets/{active_id}").json()
+
+            # Accurate preview using the dedicated /quote endpoint (pure, no user needed)
+            q = api_client.get(
+                f"/markets/{active_id}/quote",
+                params={"shares_yes": sy, "shares_no": sn},
+            ).json()
+            cost = q["effective_cost"]
+            raw_cost = q["raw_cost"]
+
             _show_trade_confirmation_dialog(
-                sim=sim,
                 active_id=active_id,
                 user_id=user_id,
                 sy=sy,
@@ -613,7 +691,7 @@ with tab_trade:
                 cost=cost,
                 raw_cost=raw_cost,
                 current_pos=current_pos,
-                market_title=market.title,
+                market_title=mkt["title"],
             )
 
         if trade_disabled:

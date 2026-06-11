@@ -94,6 +94,16 @@ def cmd_compare(args: argparse.Namespace) -> None:
     cmd_replay(args)
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    """Launch the FastAPI server."""
+    try:
+        from .api import run
+    except ImportError as e:
+        print("FastAPI support not installed. Run: pip install -e '.[api]'")
+        raise SystemExit(1) from e
+    run(host=args.host, port=args.port, reload=args.reload)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lmsr",
@@ -158,6 +168,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     exp_p.add_argument("name", nargs="?", default="list", help="Experiment name or 'list'")
     exp_p.set_defaults(func=lambda a: print("Experiment runner not yet implemented. See examples/ for now."))
+
+    # Serve the FastAPI backend (requires the [api] extra)
+    serve_p = subparsers.add_parser(
+        "serve",
+        help="Run the FastAPI server (lmsr.api). Requires `pip install -e '.[api]'`.",
+    )
+    serve_p.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    serve_p.add_argument("--port", type=int, default=8000, help="Port to listen on")
+    serve_p.add_argument("--reload", action="store_true", help="Enable auto-reload (dev)")
+    serve_p.set_defaults(func=cmd_serve)
 
     return parser
 

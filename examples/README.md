@@ -195,3 +195,16 @@ See `examples/trading_agent.py` for a runnable demonstration of the high-level `
 ## Command Line
 
 See the section above for the `lmsr` CLI (replay + b comparison).
+
+## FastAPI Backend
+
+The `lmsr serve` command (or `uvicorn lmsr.api:app`) starts a FastAPI server that wraps the simulator. This is the HTTP API layer that lets remote agents, bots, and other UIs interact with markets without being in the same Python process.
+
+Install with the api extra and run:
+
+```bash
+pip install -e ".[api]"
+lmsr serve
+```
+
+Full details and request/response examples are in `src/lmsr/api.py` (OpenAPI docs available at /docs when running).
