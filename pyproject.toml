@@ -55,6 +55,9 @@ Homepage = "https://github.com/rkthijs/lmsr-lab"
 Repository = "https://github.com/rkthijs/lmsr-lab"
 Issues = "https://github.com/rkthijs/lmsr-lab/issues"
 
+[project.scripts]
+lmsr = "lmsr.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/lmsr"]
 
