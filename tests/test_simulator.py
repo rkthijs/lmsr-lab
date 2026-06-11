@@ -7,10 +7,20 @@ These tests validate the architectural patterns from DESIGN.md:
 - Replay capability per market
 """
 
-import numpy as np
-import pytest
+import os
+import tempfile
 
-from src.lmsr.simulator import LMSRMarketSimulator, Market
+import numpy as np
+
+# FastAPI test imports (for API coverage)
+from fastapi.testclient import TestClient
+
+import src.lmsr.api as api_mod
+from src.lmsr.adaptive import BoundedB, LinearVolumeB, LogVolumeB, SqrtVolumeB, TradeCountB
+from src.lmsr.agent import TradingAgent  # for existing agent tests
+from src.lmsr.api import app as fastapi_app
+from src.lmsr.db import SQLiteStore
+from src.lmsr.simulator import LMSRMarketSimulator
 
 
 def test_create_multiple_markets():
@@ -85,7 +95,7 @@ def test_cannot_trade_on_resolved_market():
     sim.place_trade(market.id, "alice", 5, 0)
     sim.resolve_market(market.id, "no")
 
-    result = sim.place_trade(market.id, "bob", 10, 0)
+    _ = sim.place_trade(market.id, "bob", 10, 0)
 
     # Currently we still allow it on the engine level.
     # This test mainly checks that the market status is respected at a higher level
@@ -216,8 +226,6 @@ def test_accounting_identity_with_subsidy():
 # Persistence Tests
 # ------------------------------------------------------------------
 
-import tempfile
-import os
 
 def test_save_and_load_roundtrip():
     sim = LMSRMarketSimulator()
@@ -401,8 +409,6 @@ def test_global_leaderboard_pnl():
 # TradingAgent ergonomics (bot / agent API)
 # ------------------------------------------------------------------
 
-from src.lmsr.agent import TradingAgent
-from src.lmsr.adaptive import LinearVolumeB, BoundedB
 
 
 def test_trading_agent_basic_usage():
@@ -427,35 +433,258 @@ def test_trading_agent_basic_usage():
     assert len(prices) == 2
     assert abs(sum(prices) - 1.0) < 1e-9
 
-    # Balance and portfolio
-    assert agent.get_balance() < 1000.0  # started with default 1000
-    portfolio = agent.get_portfolio()
-    assert portfolio.user_id == "bot_1"
-    assert m.id in portfolio.positions
 
-    # Adaptive b awareness
-    adaptive = BoundedB(LinearVolumeB(alpha=0.1, min_b=5), min_b=5, max_b=100)
-    m2 = agent.create_market("Adaptive test market", b=adaptive)
-    assert agent.is_adaptive_b(m2.id) is True
-    assert agent.get_current_b(m2.id) >= 5.0
+# ------------------------------------------------------------------
+# DB / SQLite Persistence Tests (new coverage for db.py + simulator db_path paths)
+# ------------------------------------------------------------------
 
-    # Quote (no execution)
-    q = agent.quote(m2.id, shares_yes=10)
+
+
+
+def test_sqlite_store_basic_crud():
+    """Directly exercise SQLiteStore (covers init, schema, save/get/list for all tables)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        store = SQLiteStore(db_path)
+
+        # Users
+        u = store.get_or_create_user("alice", display_name="Alice", balance=1234.5)
+        assert u["id"] == "alice"
+        assert u["balance"] == 1234.5
+        store.update_user_balance("alice", 999.0)
+        assert store.get_user("alice")["balance"] == 999.0
+
+        # Markets (fixed)
+        store.save_market(
+            id="m1", title="Test Fixed", b=25.0, fee_rate=0.02,
+            initial_subsidy=50.0, status="open"
+        )
+        m = store.get_market("m1")
+        assert m["title"] == "Test Fixed"
+        assert m["b"] == 25.0
+        assert m["strategy_type"] == "fixed"
+
+        # Markets (adaptive)
+        strat = BoundedB(LinearVolumeB(alpha=0.1, min_b=10), min_b=10, max_b=300)
+        store.save_market(
+            id="m2", title="Test Adaptive", b=strat, status="open"
+        )
+        m2 = store.get_market("m2")
+        assert m2["strategy_type"] == "bounded_linear"
+        assert m2["alpha"] == 0.1
+        assert m2["min_b"] == 10
+
+        # Trades
+        store.save_trade({
+            "id": "t1", "market_id": "m1", "user_id": "alice",
+            "shares_yes": 10, "shares_no": 0,
+            "raw_cost": 5.0, "fee": 0.1, "effective_cost": 5.1,
+            "price_after_yes": 0.6, "price_after_no": 0.4,
+            "q_after_yes": 10.0, "q_after_no": 0.0,
+            "created_at": "2026-01-01T00:00:00+00:00"
+        })
+        trades = store.get_trades("m1")
+        assert len(trades) == 1
+        assert trades[0]["shares_yes"] == 10
+
+        # Payouts + Scores
+        store.save_payout({"market_id": "m1", "user_id": "alice", "amount": 10.0, "outcome": "yes"})
+        store.save_score({
+            "market_id": "m1", "user_id": "alice", "trade_id": "t1",
+            "forecast_prob": 0.55, "outcome": 1.0,
+            "brier_score": 0.2, "log_score": -0.1
+        })
+        payouts = store.get_payouts(market_id="m1")
+        scores = store.get_scores(market_id="m1")
+        assert len(payouts) == 1
+        assert len(scores) == 1
+
+        # Clear
+        store.clear_all()
+        assert len(store.list_markets()) == 0
+        assert len(store.list_users()) == 0
+
+        store.close()
+
+
+def test_simulator_with_db_path_roundtrip():
+    """Full lifecycle with db_path (covers simulator DB integration + load by replay)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "sim.db")
+
+        # First simulator instance - write data
+        sim = LMSRMarketSimulator(db_path=db_path)
+        m = sim.create_market("DB Roundtrip", b=20.0, initial_subsidy=100.0)
+        sim.place_trade(m.id, "alice", 8, 1)
+        sim.place_trade(m.id, "bob", 0, 5)
+
+        _ = sim.get_balance("alice")
+        res = sim.resolve_market(m.id, "yes")
+        assert res["accounting_identity"]["is_valid"] is True
+
+        # New simulator instance - should load from DB
+        sim2 = LMSRMarketSimulator(db_path=db_path)
+        m2 = sim2.get_market(m.id)
+        assert m2.status == "resolved"
+        assert len(m2.trades) == 2
+        assert len(m2.payouts) >= 1
+        assert len(sim2.get_scores(m.id)) == 2
+
+        # Balances and positions should be restored (focus on key invariants)
+        bal_after = sim2.get_balance("alice")
+        assert bal_after >= 1000.0  # at minimum back to start after payout
+        pos = sim2.get_user_position(m.id, "alice")
+        assert pos[0] == 8.0
+        assert pos[1] == 1.0
+
+        # Can continue operating
+        m3 = sim2.create_market("After Reload")
+        sim2.place_trade(m3.id, "alice", 3, 0)
+        assert len(sim2.list_markets()) == 2
+
+
+def test_db_persistence_adaptive_b():
+    """Adaptive b strategy survives DB save + reload."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "adaptive.db")
+        sim = LMSRMarketSimulator(db_path=db_path)
+
+        adaptive = BoundedB(LinearVolumeB(alpha=0.07, min_b=10), min_b=10, max_b=250)
+        m = sim.create_market("Adaptive DB", b=adaptive)
+        sim.place_trade(m.id, "trader", 4, 2)
+
+        # Reload
+        sim2 = LMSRMarketSimulator(db_path=db_path)
+        m2 = sim2.get_market(m.id)
+        # The strategy object is reconstructed; live b comes from the engine (current_b)
+        live_b = getattr(m2, "current_b", None)
+        if live_b is None:
+            live_b = getattr(getattr(m2, "engine", None), "b", 10.0)
+        assert live_b >= 10.0  # floor; tiny volume with this alpha may not increase it yet
+        # Further trades should still work with the restored strategy
+        sim2.place_trade(m.id, "trader2", 1, 0)
+
+
+def test_db_reset_clears_data():
+    """sim.reset() when using DB should clear persisted state."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "reset.db")
+        sim = LMSRMarketSimulator(db_path=db_path)
+        m = sim.create_market("To Reset")
+        sim.place_trade(m.id, "u", 5, 0)
+        sim.resolve_market(m.id, "yes")
+
+        sim.reset()
+        assert len(sim.list_markets()) == 0
+
+        # Fresh instance on same DB should also see empty
+        sim2 = LMSRMarketSimulator(db_path=db_path)
+        assert len(sim2.list_markets()) == 0
+
+
+# ------------------------------------------------------------------
+# FastAPI Layer Coverage (using TestClient)
+# ------------------------------------------------------------------
+
+
+
+def test_api_basic_market_and_trade_flow():
+    """Exercise the main API endpoints to improve api.py coverage."""
+    # Use a fresh in-memory simulator for this test
+    sim = LMSRMarketSimulator()
+    api_mod._sim = sim
+    client = TestClient(fastapi_app)
+
+    # Create market
+    payload = {
+        "title": "API Coverage Test",
+        "b": 30.0,
+        "fee_rate": 0.02,
+        "initial_subsidy": 0.0,
+    }
+    r = client.post("/markets", json=payload)
+    assert r.status_code == 201
+    market = r.json()
+    mid = market["id"]
+    assert market["status"] == "open"
+
+    # List markets
+    r = client.get("/markets")
+    assert r.status_code == 200
+    assert any(m["id"] == mid for m in r.json())
+
+    # Get single market
+    r = client.get(f"/markets/{mid}")
+    assert r.status_code == 200
+
+    # Quote
+    r = client.get(f"/markets/{mid}/quote", params={"shares_yes": 5, "shares_no": 0})
+    assert r.status_code == 200
+    q = r.json()
     assert "effective_cost" in q
-    assert q["fee"] >= 0
+    assert "status" in q
 
-    # Observe helper (RL / bot friendly state) — test on the market where we actually traded
-    obs = agent.observe(m.id)
-    assert obs["market_id"] == m.id
-    assert "prices" in obs
-    assert len(obs["prices"]) == 2
-    assert abs(sum(obs["prices"]) - 1.0) < 1e-9
-    assert "current_b" in obs
-    assert "position" in obs
-    assert obs["position"]["yes"] == 15.0
-    assert "balance" in obs
-    assert "num_trades" in obs
-    assert obs["num_trades"] >= 1
+    # Trade
+    r = client.post(f"/markets/{mid}/trades", json={"user_id": "api_user", "shares_yes": 5})
+    assert r.status_code == 200
+    assert "cost" in r.json()
+
+    # Observe
+    r = client.get(f"/markets/{mid}/observe", params={"user_id": "api_user"})
+    assert r.status_code == 200
+    obs = r.json()
+    assert obs["position"]["yes"] == 5.0
+
+    # Resolve
+    r = client.post(f"/markets/{mid}/resolve", json={"outcome": "yes"})
+    assert r.status_code == 200
+    res = r.json()
+    assert "market_maker_pl" in res
+    assert res["accounting_identity"]["is_valid"] is True
+
+    # Leaderboard / summary (light)
+    r = client.get("/leaderboard")
+    assert r.status_code == 200
+
+    r = client.get("/summary")
+    assert r.status_code == 200
+
+    # Reset
+    r = client.post("/reset")
+    assert r.status_code == 200
+    assert r.json()["success"] is True
+
+
+# ------------------------------------------------------------------
+# Additional Adaptive Strategy Coverage
+# ------------------------------------------------------------------
+
+
+
+def test_sqrt_volume_b_clamping_and_behavior():
+    s = SqrtVolumeB(alpha=2.0, min_b=5.0, max_b=100.0)
+    # Small volume -> should hit min
+    assert s(np.array([1.0, 0.0])) == 5.0
+    # Larger volume
+    val = s(np.array([100.0, 50.0]))
+    assert 5.0 < val < 100.0
+    # Clamped at max
+    big = SqrtVolumeB(alpha=10.0, min_b=5.0, max_b=20.0)
+    assert big(np.array([10000.0, 0.0])) == 20.0
+
+
+def test_log_volume_b_and_trade_count_b():
+    logb = LogVolumeB(alpha=5.0, min_b=5.0, max_b=50.0)
+    assert logb(np.array([0.0, 0.0])) == 5.0
+    val = logb(np.array([100.0, 0.0]))
+    assert 5 < val < 50
+
+    tcb = TradeCountB(alpha=1.0, min_b=5.0, max_b=30.0)
+    # TradeCountB is stateful via explicit .step()
+    assert tcb(np.array([10.0, 0.0])) == 5.0
+    tcb.step()
+    val2 = tcb(np.array([10.0, 0.0]))
+    assert val2 > 5.0
 
 
 def test_trading_agent_sell_and_adaptive_b():

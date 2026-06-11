@@ -29,6 +29,13 @@ import numpy as np
 from .market import BinaryLMSRMarket, BType
 from .scoring import brier_score, log_score
 
+# Optional DB persistence (stdlib sqlite3, no new runtime dependency)
+try:
+    from .db import SQLiteStore, reconstruct_b
+except Exception:  # pragma: no cover
+    SQLiteStore = None  # type: ignore
+    reconstruct_b = None  # type: ignore
+
 
 @dataclass(frozen=True)
 class Trade:
@@ -176,13 +183,128 @@ class LMSRMarketSimulator:
         sim.place_trade(m1.id, "alice", 10, 0)
     """
 
-    def __init__(self):
+    def __init__(self, db_path: str | Path | None = None):
         self.markets: dict[str, Market] = {}
         self._next_market_id = 1
         # Per-market position caches
         self._positions_cache: dict[str, dict[str, np.ndarray]] = {}
         # Improved user model (replaces flat balance dict)
         self.users: dict[str, User] = {}
+
+        # Optional durable storage (replaces pickle for the main app/demo use case)
+        self.db_path: str | None = str(db_path) if db_path else None
+        self._db: Any = None
+        if self.db_path and SQLiteStore is not None:
+            self._db = SQLiteStore(self.db_path)
+            self._load_from_db()
+
+    def _load_from_db(self) -> None:
+        """Hydrate the in-memory simulator from the DB (replay trades, load balances etc)."""
+        if not self._db:
+            return
+
+        # Users (current balances)
+        for u in self._db.list_users():
+            self.users[u["id"]] = User(
+                id=u["id"],
+                balance=float(u["balance"]),
+                display_name=u.get("display_name"),
+            )
+
+        # Markets + replay trades into their engines (positions derived)
+        max_id = 0
+        for mdata in self._db.list_markets():
+            mid = mdata["id"]
+            # reconstruct b (fixed or adaptive)
+            b = reconstruct_b(mdata) if reconstruct_b else float(mdata["b"])
+
+            market = Market(
+                id=mid,
+                title=mdata["title"],
+                description=mdata.get("description", ""),
+                resolution_criteria=mdata.get("resolution_criteria", ""),
+                b=b,
+                fee_rate=float(mdata.get("fee_rate", 0.02)),
+                initial_subsidy=float(mdata.get("initial_subsidy", 0)),
+                status=mdata.get("status", "open"),
+            )
+            # override timestamps if present
+            if mdata.get("created_at"):
+                try:
+                    market.created_at = datetime.fromisoformat(mdata["created_at"])
+                except Exception:
+                    pass
+            if mdata.get("close_at"):
+                try:
+                    market.close_at = datetime.fromisoformat(mdata["close_at"])
+                except Exception:
+                    pass
+            if mdata.get("resolved_at"):
+                try:
+                    market.resolved_at = datetime.fromisoformat(mdata["resolved_at"])
+                except Exception:
+                    pass
+            market.resolution_outcome = mdata.get("resolution_outcome")
+
+            self.markets[mid] = market
+            self._positions_cache[mid] = {}
+
+            # replay trades (low-level engine.trade only - no balance side effects here)
+            for tdata in self._db.get_trades(mid):
+                trade = Trade(
+                    id=tdata["id"],
+                    market_id=mid,
+                    timestamp=datetime.fromisoformat(tdata["created_at"]) if tdata.get("created_at") else datetime.now(timezone.utc),
+                    user_id=tdata["user_id"],
+                    shares_yes=float(tdata["shares_yes"]),
+                    shares_no=float(tdata["shares_no"]),
+                    raw_cost=float(tdata["raw_cost"]),
+                    fee=float(tdata["fee"]),
+                    effective_cost=float(tdata["effective_cost"]),
+                    price_after_yes=float(tdata["price_after_yes"]),
+                    price_after_no=float(tdata["price_after_no"]),
+                    market_q_after=(float(tdata["q_after_yes"]), float(tdata["q_after_no"])),
+                )
+                market.trades.append(trade)
+                # replay math into the engine (updates q + internal user_positions guard)
+                market.engine.trade(trade.user_id, trade.shares_yes, trade.shares_no)
+
+            # try to advance the id counter
+            try:
+                num = int(mid.lstrip("m"))
+                if num > max_id:
+                    max_id = num
+            except Exception:
+                pass
+
+        if max_id >= self._next_market_id:
+            self._next_market_id = max_id + 1
+
+        # load payouts and scores into the market objects
+        for mid, market in self.markets.items():
+            for pdata in self._db.get_payouts(market_id=mid):
+                market.payouts.append(
+                    Payout(
+                        market_id=mid,
+                        user_id=pdata["user_id"],
+                        amount=float(pdata["amount"]),
+                        outcome=pdata["outcome"],
+                        timestamp=datetime.fromisoformat(pdata["created_at"]) if pdata.get("created_at") else datetime.now(timezone.utc),
+                    )
+                )
+            for sdata in self._db.get_scores(market_id=mid):
+                market.scores.append(
+                    Score(
+                        market_id=mid,
+                        user_id=sdata["user_id"],
+                        trade_id=sdata["trade_id"],
+                        forecast_prob=float(sdata["forecast_prob"]),
+                        outcome=float(sdata.get("outcome", 0)),
+                        brier_score=float(sdata.get("brier_score", 0)),
+                        log_score=float(sdata.get("log_score", 0)),
+                        timestamp=datetime.fromisoformat(sdata["created_at"]) if sdata.get("created_at") else datetime.now(timezone.utc),
+                    )
+                )
 
     # ------------------------------------------------------------------
     # Market Management
@@ -222,6 +344,20 @@ class LMSRMarketSimulator:
         )
         self.markets[market_id] = market
         self._positions_cache[market_id] = {}
+
+        if self._db:
+            # persist metadata (strategy info is handled inside the store)
+            self._db.save_market(
+                id=market_id,
+                title=title,
+                description=description,
+                resolution_criteria=resolution_criteria,
+                b=b,
+                fee_rate=fee_rate,
+                initial_subsidy=initial_subsidy,
+                status="open",
+                created_at=market.created_at.isoformat(),
+            )
         return market
 
     def get_market(self, market_id: str) -> Market:
@@ -408,6 +544,21 @@ class LMSRMarketSimulator:
                 timestamp=timestamp,
             )
             market.scores.append(score)
+
+            if self._db:
+                try:
+                    self._db.save_score({
+                        "market_id": market.id,
+                        "user_id": trade.user_id,
+                        "trade_id": trade.id,
+                        "forecast_prob": forecast,
+                        "outcome": outcome_value,
+                        "brier_score": brier,
+                        "log_score": log_s,
+                        "created_at": timestamp.isoformat(),
+                    })
+                except Exception:
+                    pass
 
     def _get_user_aggregates(self, user_id: str) -> dict:
         """
@@ -648,6 +799,31 @@ class LMSRMarketSimulator:
         if market_id in self._positions_cache:
             self._positions_cache[market_id] = {}
 
+        # Persist to DB (trade record + updated user balance)
+        if self._db:
+            try:
+                self._db.save_trade({
+                    "id": trade_id,
+                    "market_id": market_id,
+                    "user_id": user_id,
+                    "shares_yes": shares_yes,
+                    "shares_no": shares_no,
+                    "raw_cost": raw_cost,
+                    "fee": result["fee"],
+                    "effective_cost": effective_cost,
+                    "price_after_yes": p_yes,
+                    "price_after_no": p_no,
+                    "q_after_yes": engine.q[0],
+                    "q_after_no": engine.q[1],
+                    "created_at": trade.timestamp.isoformat(),
+                })
+                # persist the balance change
+                new_balance = self.get_balance(user_id)
+                self._db.update_user_balance(user_id, new_balance)
+            except Exception:
+                # DB write failure should not break the in-memory op in a research tool
+                pass
+
         return result
 
     # ------------------------------------------------------------------
@@ -751,6 +927,20 @@ class LMSRMarketSimulator:
                 market.payouts.append(payout)
                 self._adjust_balance(user, amount)
 
+                if self._db:
+                    try:
+                        self._db.save_payout({
+                            "market_id": market.id,
+                            "user_id": user,
+                            "amount": amount,
+                            "outcome": winning,
+                            "created_at": timestamp.isoformat(),
+                        })
+                        new_bal = self.get_balance(user)
+                        self._db.update_user_balance(user, new_bal)
+                    except Exception:
+                        pass
+
     def _finalize_resolution(
         self, market: Market, winning: str, timestamp: datetime, result: dict
     ) -> None:
@@ -758,6 +948,17 @@ class LMSRMarketSimulator:
         market.status = "resolved"
         market.resolution_outcome = winning
         market.resolved_at = timestamp
+
+        if self._db:
+            try:
+                self._db.update_market_status(
+                    market.id,
+                    "resolved",
+                    resolution_outcome=winning,
+                    resolved_at=timestamp.isoformat(),
+                )
+            except Exception:
+                pass
 
         accounting = self.check_accounting_identity(market.id)
         result["accounting_identity"] = accounting
@@ -789,6 +990,13 @@ class LMSRMarketSimulator:
         self.markets.clear()
         self._positions_cache.clear()
         self._next_market_id = 1
+        self.users.clear()
+
+        if self._db:
+            try:
+                self._db.clear_all()
+            except Exception:
+                pass
 
     def summary(self, market_id: str | None = None) -> dict[str, Any]:
         """Return summary information, optionally for a specific market."""

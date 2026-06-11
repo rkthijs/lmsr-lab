@@ -100,21 +100,26 @@ def get_sim() -> LMSRMarketSimulator:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan to initialize one shared simulator for the demo server."""
+    """Lifespan to initialize one shared simulator for the demo server.
+    Uses SQLite for durable storage instead of pickle.
+    """
     global _sim
-    _sim = LMSRMarketSimulator()
-    # Seed a couple of demo markets so the API is immediately useful
+    # Use a file DB so state survives restarts of the demo server / streamlit.
+    # For pure tests you can still do LMSRMarketSimulator(db_path=":memory:")
+    _sim = LMSRMarketSimulator(db_path="lmsr_demo.db")
+    # Seed only if the DB is empty (first run)
     try:
-        from .adaptive import BoundedB, LinearVolumeB
-        from .agent import TradingAgent
+        if not _sim.list_markets():
+            from .adaptive import BoundedB, LinearVolumeB
+            from .agent import TradingAgent
 
-        m1 = _sim.create_market("Will revenue beat target? (fixed)", b=45.0)
-        agent = TradingAgent(_sim, "demo_bot")
-        agent.buy_yes(m1.id, 12)
-        agent.buy_no(m1.id, 5)
+            m1 = _sim.create_market("Will revenue beat target? (fixed)", b=45.0)
+            agent = TradingAgent(_sim, "demo_bot")
+            agent.buy_yes(m1.id, 12)
+            agent.buy_no(m1.id, 5)
 
-        adaptive = BoundedB(LinearVolumeB(alpha=0.07, min_b=8), min_b=8, max_b=250)
-        _sim.create_market("Will the feature ship? (adaptive)", b=adaptive)
+            adaptive = BoundedB(LinearVolumeB(alpha=0.07, min_b=8), min_b=8, max_b=250)
+            _sim.create_market("Will the feature ship? (adaptive)", b=adaptive)
     except Exception:
         pass  # seeding is best-effort for demo
     yield
@@ -318,9 +323,14 @@ def summary():
 
 @app.post("/reset")
 def reset_simulator():
-    """Full reset (for the demo 'Reset Simulator' button)."""
+    """Full reset (for the demo 'Reset Simulator' button).
+    Uses the simulator's reset() which also clears the underlying DB when present.
+    """
     global _sim
-    _sim = LMSRMarketSimulator()
+    if _sim is not None:
+        _sim.reset()
+    else:
+        _sim = LMSRMarketSimulator(db_path="lmsr_demo.db")
     return {"success": True}
 
 
