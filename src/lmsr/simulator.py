@@ -18,6 +18,7 @@ and early UI work.
 
 from __future__ import annotations
 
+import json
 import pickle
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -29,12 +30,40 @@ import numpy as np
 from .market import BinaryLMSRMarket, BType
 from .scoring import brier_score, log_score
 
+# For strategy serialization in JSON
+try:
+    from .adaptive import BoundedB, LinearVolumeB
+except Exception:  # pragma: no cover
+    BoundedB = None  # type: ignore
+    LinearVolumeB = None  # type: ignore
+
 # Optional DB persistence (stdlib sqlite3, no new runtime dependency)
 try:
     from .db import SQLiteStore, reconstruct_b
 except Exception:  # pragma: no cover
     SQLiteStore = None  # type: ignore
     reconstruct_b = None  # type: ignore
+
+
+def _serialize_strategy(b: Any) -> dict[str, Any]:
+    """Serialize b (float or adaptive strategy) to a dict for JSON/DB."""
+    if isinstance(b, (int, float)):
+        return {"type": "fixed", "value": float(b)}
+    if BoundedB is not None and isinstance(b, BoundedB):
+        inner = b.strategy
+        if LinearVolumeB is not None and isinstance(inner, LinearVolumeB):
+            return {
+                "type": "bounded_linear",
+                "alpha": inner.alpha,
+                "min_b": b.min_b,
+                "max_b": b.max_b,
+            }
+        # fall back
+        return {"type": "bounded_linear", "alpha": 0.05, "min_b": getattr(b, "min_b", 5.0), "max_b": getattr(b, "max_b", 300.0)}
+    if LinearVolumeB is not None and isinstance(b, LinearVolumeB):
+        return {"type": "linear", "alpha": b.alpha, "min_b": b.min_b}
+    # default
+    return {"type": "fixed", "value": 20.0}
 
 
 @dataclass(frozen=True)
@@ -306,6 +335,12 @@ class LMSRMarketSimulator:
                     )
                 )
 
+    def db_summary(self) -> dict[str, Any]:
+        """Return summary info from the DB (if configured) for inspection."""
+        if self._db:
+            return self._db.get_summary()
+        return {"error": "no db configured (use db_path=...)"}
+
     # ------------------------------------------------------------------
     # Market Management
     # ------------------------------------------------------------------
@@ -556,7 +591,7 @@ class LMSRMarketSimulator:
                         "brier_score": brier,
                         "log_score": log_s,
                         "created_at": timestamp.isoformat(),
-                    })
+                    }, commit=False)
                 except Exception:
                     pass
 
@@ -723,6 +758,195 @@ class LMSRMarketSimulator:
         return sim
 
     # ------------------------------------------------------------------
+    # JSON Serialization (new, complements pickle and DB)
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict of the full simulator state."""
+        users = [
+            {"id": u.id, "balance": u.balance, "display_name": u.display_name}
+            for u in self.users.values()
+        ]
+
+        markets = []
+        for mid, m in self.markets.items():
+            b_spec = _serialize_strategy(m.b)
+            markets.append({
+                "id": m.id,
+                "title": m.title,
+                "description": m.description,
+                "resolution_criteria": m.resolution_criteria,
+                "b_spec": b_spec,
+                "fee_rate": m.fee_rate,
+                "initial_subsidy": m.initial_subsidy,
+                "status": m.status,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "close_at": m.close_at.isoformat() if m.close_at else None,
+                "resolved_at": m.resolved_at.isoformat() if m.resolved_at else None,
+                "resolution_outcome": m.resolution_outcome,
+                "trades": [
+                    {
+                        "id": t.id,
+                        "user_id": t.user_id,
+                        "shares_yes": t.shares_yes,
+                        "shares_no": t.shares_no,
+                        "raw_cost": t.raw_cost,
+                        "fee": t.fee,
+                        "effective_cost": t.effective_cost,
+                        "price_after_yes": t.price_after_yes,
+                        "price_after_no": t.price_after_no,
+                        "market_q_after": list(t.market_q_after),
+                        "timestamp": t.timestamp.isoformat(),
+                    }
+                    for t in m.trades
+                ],
+                "payouts": [
+                    {
+                        "user_id": p.user_id,
+                        "amount": p.amount,
+                        "outcome": p.outcome,
+                        "timestamp": p.timestamp.isoformat(),
+                    }
+                    for p in m.payouts
+                ],
+                "scores": [
+                    {
+                        "user_id": s.user_id,
+                        "trade_id": s.trade_id,
+                        "forecast_prob": s.forecast_prob,
+                        "outcome": s.outcome,
+                        "brier_score": s.brier_score,
+                        "log_score": s.log_score,
+                        "timestamp": s.timestamp.isoformat(),
+                    }
+                    for s in m.scores
+                ],
+            })
+
+        return {
+            "users": users,
+            "markets": markets,
+            "next_market_id": self._next_market_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], db_path: str | Path | None = None) -> "LMSRMarketSimulator":
+        """Reconstruct a simulator from a dict produced by to_dict()."""
+        sim = cls(db_path=db_path)  # this may load from DB if provided, but we will override
+
+        # clear whatever was loaded
+        sim.markets.clear()
+        sim.users.clear()
+        sim._positions_cache.clear()
+        sim._next_market_id = data.get("next_market_id", 1)
+
+        # users
+        for ud in data.get("users", []):
+            sim.users[ud["id"]] = User(
+                id=ud["id"],
+                balance=float(ud.get("balance", 1000.0)),
+                display_name=ud.get("display_name"),
+            )
+
+        # markets + derived state
+        for md in data.get("markets", []):
+            mid = md["id"]
+            b_spec = md.get("b_spec", {"type": "fixed", "value": 20.0})
+            if b_spec["type"] == "fixed":
+                b = b_spec["value"]
+            elif b_spec["type"] == "linear":
+                b = LinearVolumeB(alpha=b_spec.get("alpha", 0.05), min_b=b_spec.get("min_b", 5.0))
+            elif b_spec["type"] == "bounded_linear":
+                inner = LinearVolumeB(alpha=b_spec.get("alpha", 0.05), min_b=b_spec.get("min_b", 5.0))
+                b = BoundedB(inner, min_b=b_spec.get("min_b", 5.0), max_b=b_spec.get("max_b", 300.0))
+            else:
+                b = 20.0
+
+            market = Market(
+                id=mid,
+                title=md["title"],
+                description=md.get("description", ""),
+                resolution_criteria=md.get("resolution_criteria", ""),
+                b=b,
+                fee_rate=float(md.get("fee_rate", 0.02)),
+                initial_subsidy=float(md.get("initial_subsidy", 0)),
+                status=md.get("status", "open"),
+            )
+
+            # timestamps
+            for ts_field in ("created_at", "close_at", "resolved_at"):
+                if md.get(ts_field):
+                    try:
+                        setattr(market, ts_field, datetime.fromisoformat(md[ts_field]))
+                    except Exception:
+                        pass
+            market.resolution_outcome = md.get("resolution_outcome")
+
+            sim.markets[mid] = market
+            sim._positions_cache[mid] = {}
+
+            # replay trades (low level into engine)
+            for td in md.get("trades", []):
+                trade = Trade(
+                    id=td["id"],
+                    market_id=mid,
+                    timestamp=datetime.fromisoformat(td["timestamp"]),
+                    user_id=td["user_id"],
+                    shares_yes=float(td["shares_yes"]),
+                    shares_no=float(td["shares_no"]),
+                    raw_cost=float(td["raw_cost"]),
+                    fee=float(td["fee"]),
+                    effective_cost=float(td["effective_cost"]),
+                    price_after_yes=float(td["price_after_yes"]),
+                    price_after_no=float(td["price_after_no"]),
+                    market_q_after=tuple(td.get("market_q_after", (0.0, 0.0))),
+                )
+                market.trades.append(trade)
+                market.engine.trade(trade.user_id, trade.shares_yes, trade.shares_no)
+
+            # payouts
+            for pd in md.get("payouts", []):
+                market.payouts.append(Payout(
+                    market_id=mid,
+                    user_id=pd["user_id"],
+                    amount=float(pd["amount"]),
+                    outcome=pd["outcome"],
+                    timestamp=datetime.fromisoformat(pd["timestamp"]),
+                ))
+
+            # scores
+            for sd in md.get("scores", []):
+                market.scores.append(Score(
+                    market_id=mid,
+                    user_id=sd["user_id"],
+                    trade_id=sd["trade_id"],
+                    forecast_prob=float(sd["forecast_prob"]),
+                    outcome=float(sd.get("outcome", 0)),
+                    brier_score=float(sd.get("brier_score", 0)),
+                    log_score=float(sd.get("log_score", 0)),
+                    timestamp=datetime.fromisoformat(sd["timestamp"]),
+                ))
+
+        return sim
+
+    def save_json(self, filepath: str | Path) -> None:
+        """Save full state as JSON (complements pickle and DB)."""
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+
+    @classmethod
+    def load_json(cls, filepath: str | Path, db_path: str | Path | None = None) -> "LMSRMarketSimulator":
+        """Load from JSON file."""
+        path = Path(filepath)
+        if not path.exists():
+            raise FileNotFoundError(f"No JSON state found at {path}")
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls.from_dict(data, db_path=db_path)
+
+    # ------------------------------------------------------------------
     # Trading
     # ------------------------------------------------------------------
 
@@ -799,8 +1023,10 @@ class LMSRMarketSimulator:
         if market_id in self._positions_cache:
             self._positions_cache[market_id] = {}
 
-        # Persist to DB (trade record + updated user balance)
+        # Persist to DB (trade record + updated user balance) with transaction
         if self._db:
+            conn = self._db.conn
+            conn.execute("BEGIN IMMEDIATE")
             try:
                 self._db.save_trade({
                     "id": trade_id,
@@ -816,11 +1042,13 @@ class LMSRMarketSimulator:
                     "q_after_yes": engine.q[0],
                     "q_after_no": engine.q[1],
                     "created_at": trade.timestamp.isoformat(),
-                })
+                }, commit=False)
                 # persist the balance change
                 new_balance = self.get_balance(user_id)
-                self._db.update_user_balance(user_id, new_balance)
+                self._db.update_user_balance(user_id, new_balance, commit=False)
+                conn.commit()
             except Exception:
+                conn.rollback()
                 # DB write failure should not break the in-memory op in a research tool
                 pass
 
@@ -898,11 +1126,22 @@ class LMSRMarketSimulator:
         idx = 0 if winning == "yes" else 1
         timestamp = datetime.now(timezone.utc)
 
-        # Delegate the heavy lifting
-        self._create_payouts_and_credit_balances(market, winning, idx, timestamp)
-        self._compute_and_store_scores(market, winning, timestamp)
-
-        self._finalize_resolution(market, winning, timestamp, result)
+        # Delegate the heavy lifting, with DB tx if present
+        if self._db:
+            conn = self._db.conn
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                self._create_payouts_and_credit_balances(market, winning, idx, timestamp)
+                self._compute_and_store_scores(market, winning, timestamp)
+                self._finalize_resolution(market, winning, timestamp, result)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        else:
+            self._create_payouts_and_credit_balances(market, winning, idx, timestamp)
+            self._compute_and_store_scores(market, winning, timestamp)
+            self._finalize_resolution(market, winning, timestamp, result)
 
         return result
 
@@ -935,9 +1174,9 @@ class LMSRMarketSimulator:
                             "amount": amount,
                             "outcome": winning,
                             "created_at": timestamp.isoformat(),
-                        })
+                        }, commit=False)
                         new_bal = self.get_balance(user)
-                        self._db.update_user_balance(user, new_bal)
+                        self._db.update_user_balance(user, new_bal, commit=False)
                     except Exception:
                         pass
 
@@ -956,6 +1195,7 @@ class LMSRMarketSimulator:
                     "resolved",
                     resolution_outcome=winning,
                     resolved_at=timestamp.isoformat(),
+                    commit=False,
                 )
             except Exception:
                 pass

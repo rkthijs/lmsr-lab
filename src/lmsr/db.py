@@ -134,7 +134,7 @@ class SQLiteStore:
 
     # ---------------- users ----------------
 
-    def get_or_create_user(self, user_id: str, display_name: str | None = None, balance: float = 1000.0) -> dict[str, Any]:
+    def get_or_create_user(self, user_id: str, display_name: str | None = None, balance: float = 1000.0, commit: bool = True) -> dict[str, Any]:
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
         row = cur.fetchone()
@@ -146,7 +146,8 @@ class SQLiteStore:
             "INSERT INTO users (id, display_name, balance, created_at) VALUES (?, ?, ?, ?)",
             (user_id, display_name or user_id, float(balance), now),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return {"id": user_id, "display_name": display_name or user_id, "balance": float(balance), "created_at": now}
 
     def get_user(self, user_id: str) -> Optional[dict[str, Any]]:
@@ -155,13 +156,14 @@ class SQLiteStore:
         row = cur.fetchone()
         return dict(row) if row else None
 
-    def update_user_balance(self, user_id: str, balance: float) -> None:
+    def update_user_balance(self, user_id: str, balance: float, commit: bool = True) -> None:
         cur = self.conn.cursor()
         cur.execute(
             "UPDATE users SET balance = ? WHERE id = ?",
             (float(balance), user_id),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def list_users(self) -> list[dict[str, Any]]:
         cur = self.conn.cursor()
@@ -189,6 +191,7 @@ class SQLiteStore:
         alpha: float | None = None,
         min_b: float | None = None,
         max_b: float | None = None,
+        commit: bool = True,
     ) -> None:
         now = created_at or _now_iso()
 
@@ -228,7 +231,8 @@ class SQLiteStore:
                 strategy_type, alpha, min_b, max_b,
             ),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def get_market(self, market_id: str) -> Optional[dict[str, Any]]:
         cur = self.conn.cursor()
@@ -245,17 +249,18 @@ class SQLiteStore:
         return [dict(r) for r in cur.fetchall()]
 
     def update_market_status(self, market_id: str, status: str, resolution_outcome: str | None = None,
-                             resolved_at: str | None = None) -> None:
+                             resolved_at: str | None = None, commit: bool = True) -> None:
         cur = self.conn.cursor()
         cur.execute(
             "UPDATE markets SET status = ?, resolution_outcome = ?, resolved_at = ? WHERE id = ?",
             (status, resolution_outcome, resolved_at, market_id),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     # ---------------- trades ----------------
 
-    def save_trade(self, trade: dict[str, Any]) -> None:
+    def save_trade(self, trade: dict[str, Any], commit: bool = True) -> None:
         cur = self.conn.cursor()
         cur.execute(
             """
@@ -280,7 +285,8 @@ class SQLiteStore:
                 trade.get("created_at") or trade.get("timestamp") or _now_iso(),
             ),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def get_trades(self, market_id: str) -> list[dict[str, Any]]:
         cur = self.conn.cursor()
@@ -289,7 +295,7 @@ class SQLiteStore:
 
     # ---------------- payouts & scores ----------------
 
-    def save_payout(self, payout: dict[str, Any]) -> None:
+    def save_payout(self, payout: dict[str, Any], commit: bool = True) -> None:
         cur = self.conn.cursor()
         cur.execute(
             """
@@ -305,7 +311,8 @@ class SQLiteStore:
                 payout.get("created_at") or payout.get("timestamp") or _now_iso(),
             ),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def get_payouts(self, market_id: str | None = None, user_id: str | None = None) -> list[dict[str, Any]]:
         cur = self.conn.cursor()
@@ -319,7 +326,7 @@ class SQLiteStore:
             cur.execute("SELECT * FROM payouts")
         return [dict(r) for r in cur.fetchall()]
 
-    def save_score(self, score: dict[str, Any]) -> None:
+    def save_score(self, score: dict[str, Any], commit: bool = True) -> None:
         cur = self.conn.cursor()
         cur.execute(
             """
@@ -338,7 +345,8 @@ class SQLiteStore:
                 score.get("created_at") or _now_iso(),
             ),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def get_scores(self, market_id: str | None = None, user_id: str | None = None) -> list[dict[str, Any]]:
         cur = self.conn.cursor()
@@ -361,6 +369,25 @@ class SQLiteStore:
 
     def close(self) -> None:
         self.conn.close()
+
+    def get_summary(self) -> dict[str, Any]:
+        """Return a simple dict summary for inspection (markets, users, trade counts, etc.)."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT COUNT(*) as c FROM markets")
+        num_markets = cur.fetchone()["c"]
+        cur.execute("SELECT COUNT(*) as c FROM users")
+        num_users = cur.fetchone()["c"]
+        cur.execute("SELECT COUNT(*) as c FROM trades")
+        num_trades = cur.fetchone()["c"]
+        cur.execute("SELECT id, title, status FROM markets ORDER BY created_at LIMIT 5")
+        sample_markets = [dict(r) for r in cur.fetchall()]
+        return {
+            "num_markets": num_markets,
+            "num_users": num_users,
+            "num_trades": num_trades,
+            "sample_markets": sample_markets,
+            "db_path": self.db_path,
+        }
 
 
 # Convenience for reconstructing adaptive strategies from DB row

@@ -583,6 +583,47 @@ def test_db_reset_clears_data():
 
 
 # ------------------------------------------------------------------
+# JSON Serialization Tests
+# ------------------------------------------------------------------
+
+
+
+def test_json_roundtrip_basic_and_adaptive():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "state.json")
+
+        sim = LMSRMarketSimulator()
+        m1 = sim.create_market("JSON Test Fixed", b=22.0, initial_subsidy=50.0)
+        sim.place_trade(m1.id, "j1", 4, 1)
+
+        adaptive = BoundedB(LinearVolumeB(alpha=0.08, min_b=8), min_b=8, max_b=120)
+        m2 = sim.create_market("JSON Adaptive", b=adaptive)
+        sim.place_trade(m2.id, "j2", 2, 3)
+
+        sim.save_json(path)
+
+        # load fresh
+        sim2 = LMSRMarketSimulator.load_json(path)
+        assert len(sim2.markets) == 2
+        assert sim2.get_market(m1.id).status == "open"
+        assert len(sim2.get_market(m1.id).trades) == 1
+        assert sim2.get_balance("j1") < 1000
+
+        # adaptive should roundtrip
+        m2_loaded = sim2.get_market(m2.id)
+        assert m2_loaded.b is not None  # strategy reconstructed
+        # can trade further
+        sim2.place_trade(m2.id, "j3", 1, 0)
+        assert len(sim2.get_market(m2.id).trades) == 2
+
+        # also test load into a DB-backed sim
+        dbp = os.path.join(tmpdir, "fromjson.db")
+        sim3 = LMSRMarketSimulator.load_json(path, db_path=dbp)
+        assert len(sim3.list_markets()) == 2
+        assert os.path.exists(dbp)
+
+
+# ------------------------------------------------------------------
 # FastAPI Layer Coverage (using TestClient)
 # ------------------------------------------------------------------
 
