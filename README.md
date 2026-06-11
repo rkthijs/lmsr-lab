@@ -166,6 +166,41 @@ portfolio = sim.get_user_portfolio("alice")
 print(portfolio)
 ```
 
+### Bot & Agent Ergonomics (for RL, scripts, and automated traders)
+
+For bots, reinforcement learning agents, Kelly-based scripts, or market-making bots, use the higher-level `TradingAgent` wrapper. It provides a much more ergonomic API scoped to a single `user_id`.
+
+```python
+from src.lmsr import LMSRMarketSimulator, TradingAgent
+from src.lmsr.adaptive import LinearVolumeB, BoundedB
+
+sim = LMSRMarketSimulator()
+agent = TradingAgent(sim, user_id="my_bot")
+
+m = agent.create_market(
+    "Will revenue beat target?",
+    b=BoundedB(LinearVolumeB(alpha=0.05), min_b=10, max_b=300)
+)
+
+agent.buy_yes(m.id, shares=25)
+print("Prices:", agent.get_prices(m.id))
+print("Current b (adaptive):", agent.get_current_b(m.id))
+print("My position:", agent.get_position(m.id))
+print("Balance:", agent.get_balance())
+
+# Evaluate before acting
+quote = agent.quote(m.id, shares_yes=10)
+print("Hypothetical cost:", quote)
+```
+
+See the full runnable example:
+
+```bash
+python examples/trading_agent.py
+```
+
+The example demonstrates multiple agents, fixed vs adaptive `b`, simple strategies, quoting, and fee/spread tracking.
+
 ---
 
 ## Educational Examples
@@ -183,6 +218,34 @@ compare_b_values(history, b_values=[15, 30, 60, 120])
 ```
 
 You can also use the **Interactive b Explorer** tab in the Streamlit app to load any history and move a slider for `b`.
+
+**CLI (new)**
+
+After `pip install -e .` (or from source with the package installed):
+
+```bash
+lmsr --help
+lmsr replay examples/trade_histories/kelly_rug_pull.json --b 10,25,50 --plot
+lmsr compare examples/trade_histories/balanced_trades.json --b 15,30,60
+```
+
+The CLI provides a small entry point for the most common experiment tasks (replay + b-comparison). It dispatches to the tools in `examples/`. More subcommands (batch scoring, experiment runner) will be added over time.
+
+**Bot & Agent Example**
+
+```bash
+python examples/trading_agent.py
+```
+
+Demonstrates `TradingAgent` (the recommended ergonomic API for bots/RL agents), fixed vs. adaptive liquidity, simple trading strategies, and cross-agent portfolio inspection.
+
+**Experiments & Parameter Studies**
+
+```bash
+python examples/experiments.py
+```
+
+Lightweight harness for sweeps (fixed vs adaptive `b`), calibration curves, and scoring comparisons using the simulator + `TradingAgent`. Great for research questions around liquidity and forecaster performance. See the file and `examples/README.md` for usage.
 
 ---
 

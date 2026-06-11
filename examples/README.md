@@ -151,3 +151,47 @@ python examples/generate_kelly_histories.py
 ```
 
 This script simulates users who size their bets using (approximate) Kelly criterion on a market with `initial_subsidy ≈ 1000`. It produces much more natural position sizes than fixed-share histories.
+
+## Experiments & Parameter Studies
+
+`examples/experiments.py` is a lightweight harness for the kinds of studies mentioned in the project roadmap (parameter sweeps, fixed vs adaptive `b` comparisons, calibration analysis).
+
+```bash
+python examples/experiments.py
+```
+
+Programmatic usage:
+
+```python
+from examples.experiments import (
+    run_fixed_b_sweep,
+    compare_fixed_vs_adaptive,
+    print_comparison_table,
+)
+
+sweep = run_fixed_b_sweep(true_p=0.7, b_values=[10, 25, 50, 100])
+comp = compare_fixed_vs_adaptive(true_p=0.75)
+print_comparison_table(comp)
+```
+
+It uses `TradingAgent`, adaptive strategies, and the scoring module to run Monte-Carlo-style belief markets and report mean Brier/Log scores + Murphy decompositions. Extend it for your own research questions.
+
+## Command-Line Interface
+
+After installing the package (`pip install -e .`), you can use the `lmsr` CLI for common tasks:
+
+```bash
+lmsr replay examples/trade_histories/kelly_rug_pull.json --b 10,25,50
+lmsr compare examples/trade_histories/balanced_trades.json --b 15,30,60 --plot
+lmsr --help
+```
+
+This is the small entry point referenced in the project roadmap for replaying histories and b-comparisons without remembering full Python invocation paths. More subcommands will be added over time.
+
+## Bot & Automated Agent Examples
+
+See `examples/trading_agent.py` for a runnable demonstration of the high-level `TradingAgent` API (the recommended interface for RL agents, scripted bots, etc.). It covers fixed vs. adaptive `b`, ergonomic trading methods, quoting, portfolio inspection, and simple multi-agent strategies.
+
+## Command Line
+
+See the section above for the `lmsr` CLI (replay + b comparison).
