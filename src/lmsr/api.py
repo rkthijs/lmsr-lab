@@ -254,6 +254,7 @@ def quote_trade(market_id: str, shares_yes: float = 0.0, shares_no: float = 0.0)
         "price_after": list(impact["price_after"]),
         "impact": list(impact["impact"]),
         "slippage": slip.get("slippage", 0.0),
+        "status": market.status,
     }
 
 

@@ -185,7 +185,7 @@ See the plan file (`.hermes/plans/2026-05-21_...-lmsr-prediction-market-plan.md`
 These are expected — the deliberate focus was an excellent research simulator, not yet a production platform.
 
 - [ ] **Persistence**: Replace pickle `save()`/`load()` with a proper SQL backend (reference schema already in DESIGN.md). Needed for concurrency, auditability, and real use.
-- [x] **API layer**: Clean, stable FastAPI (see `src/lmsr/api.py` + `lmsr serve`). The Streamlit demo (`app.py`) now exclusively talks to the API layer (in-process `TestClient` for the self-contained demo; ready for remote server via base URL). High priority item complete.
+- [x] **API layer**: Clean, stable FastAPI (see `src/lmsr/api.py` + `lmsr serve`). Core interactive paths in the Streamlit demo (`app.py`) now go through the API layer via in-process `TestClient` (trading, quotes, b-strategy changes, resolve, portfolio summary, leaderboard). A few rich read-only demo views (cross-trader positions table, payout history, stored scores on resolved markets) still use the injected simulator directly for expediency; these are clearly marked and will be migrated when small additional endpoints exist. The architecture is ready for remote clients. High priority item complete.
 - [ ] **Professional frontend**: Modern web UI (e.g. Next.js/React) over the API layer, keeping Python engine as source of truth. Streamlit remains the quick demo vehicle for now.
 - [ ] **Bot / agent ergonomics**: Higher-level client or thin wrapper making it trivial for RL agents, Kelly bots, etc. to participate in markets.
 - [ ] **CLI**: Small entry point for common experiment tasks (replay histories with different b, batch scoring, etc.).
@@ -209,5 +209,5 @@ When an agent is unsure about requirements, math, or design choices:
 
 ---
 
-**Last updated**: 2026-05 (post-compaction: fixed AttributeError in Streamlit after API refactor — normalized market dict vs dataclass accesses, enriched /quote for impact previews, converted portfolio/leaderboard/resolution actions to API where possible while keeping demo visibility views on injected sim for rich tables; all core paths now safe under "UI talks only to FastAPI" architecture)
+**Last updated**: 2026-05 (post-review: committed the native-scalar + API-client stabilization; addressed review bugs (reset desync, direct-sim fallbacks in demo views, np.float64 in Trade records) + key suggestions (safe api helper, quote status, better comments). API layer claim softened to reflect remaining demo-only direct usage.)
 **Maintainer note**: Treat this file as living documentation. Keep it concise but actionable. Update it whenever architecture, tooling, or scope meaningfully changes.

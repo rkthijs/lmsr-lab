@@ -640,7 +640,7 @@ class LMSRMarketSimulator:
             effective_cost=effective_cost,
             price_after_yes=p_yes,
             price_after_no=p_no,
-            market_q_after=tuple(engine.q),
+            market_q_after=tuple(float(x) for x in engine.q),
         )
         market.trades.append(trade)
 

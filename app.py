@@ -71,6 +71,28 @@ else:
     api_client = None
     # Users who want the pure "UI talks only to the API" experience should install with the api extra.
 
+
+def _safe_api(path, method="GET", json=None, params=None):
+    """Small helper so most api_client calls have basic status + error surfacing.
+    Returns the parsed JSON on success or {"error": ...} on failure.
+    """
+    if api_client is None:
+        return {"error": "API client not available (install with the [api] extra)"}
+    try:
+        if method.upper() == "POST":
+            r = api_client.post(path, json=json or {}, params=params)
+        else:
+            r = api_client.get(path, params=params)
+        if r.status_code >= 400:
+            body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"detail": r.text}
+            msg = body.get("error") or body.get("detail") or str(body)
+            st.error(f"API {r.status_code}: {msg}")
+            return {"error": msg, "status": r.status_code}
+        return r.json()
+    except Exception as e:
+        st.error(f"API call failed: {e}")
+        return {"error": str(e)}
+
 # Auto-load a strong demo state on first run (great for soft demos)
 if not st.session_state.demo_initialized:
     try:
@@ -177,9 +199,21 @@ with st.sidebar:
 
         st.divider()
         if st.button("🧹 Reset Simulator (clear everything)", width="stretch"):
-            api_client.post("/reset")
-            st.session_state.active_market_id = None
-            st.info("Simulator reset to empty state.")
+            # Use the safe wrapper so errors are surfaced nicely
+            res = _safe_api("/reset", method="POST")
+            if "error" not in res:
+                # Replace our local simulator instance with a fresh one and reset flags
+                # so that on rerun the injection and the "not demo_initialized" auto-seed
+                # both see a clean state. This makes the reset button actually observable.
+                st.session_state.sim = _DirectSimulator()
+                st.session_state.demo_initialized = False
+                st.session_state.active_market_id = None
+                st.session_state.trade_counter = 0
+                # Re-inject immediately (the top-of-script injection will also run on rerun)
+                if _HAS_FASTAPI:
+                    import src.lmsr.api as api_mod
+                    api_mod._sim = st.session_state.sim
+                st.info("Simulator reset to empty state.")
             st.rerun()
 
     st.divider()
@@ -743,19 +777,26 @@ with tab_trade:
     your_pos = [obs_here["position"]["yes"], obs_here["position"]["no"]]
     st.write(f"**You** — Yes: {your_pos[0]:.1f} | No: {your_pos[1]:.1f}")
 
-    # Cross-user positions table (demo visibility of market state). Uses direct sim because it needs
-    # per-trader positions for all participants; this is read-only "admin/demo" view, not a trading action.
-    # (A full /markets/{id}/positions endpoint could be added later for pure remote clients.)
+    # Cross-user positions table (demo visibility of market state).
+    # Now driven purely from the already-fetched /trades response + per-user /observe calls
+    # so it stays consistent with the "UI talks to API" architecture even for the all-traders view.
+    # (If a dedicated /markets/{id}/positions endpoint is added later this can be simplified further.)
     pos_data = []
-    try:
-        mkt_for_traders = sim.get_market(active_id)
-        for t in mkt_for_traders.trades:
-            p = sim.get_user_position(active_id, t.user_id)
-            pos_data.append({"User": t.user_id, "Yes": round(p[0], 1), "No": round(p[1], 1)})
-    except Exception:
-        # Fallback: at least show that the current user traded
-        if your_pos[0] or your_pos[1]:
-            pos_data.append({"User": user_id, "Yes": round(your_pos[0], 1), "No": round(your_pos[1], 1)})
+    seen_users = set()
+    for t in trades:  # list of dicts from /markets/{id}/trades (already fetched above)
+        uid = t.get("user_id")
+        if not uid or uid in seen_users:
+            continue
+        seen_users.add(uid)
+        try:
+            o = api_client.get(f"/markets/{active_id}/observe", params={"user_id": uid}).json()
+            p = o.get("position", {})
+            pos_data.append({"User": uid, "Yes": round(p.get("yes", 0), 1), "No": round(p.get("no", 0), 1)})
+        except Exception:
+            pass
+    if not pos_data and (your_pos[0] or your_pos[1]):
+        # Fallback for the current user only (should be rare)
+        pos_data.append({"User": user_id, "Yes": round(your_pos[0], 1), "No": round(your_pos[1], 1)})
 
     if pos_data:
         st.dataframe(pos_data, width="stretch", hide_index=True)
@@ -772,15 +813,17 @@ with tab_trade:
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Resolve to Yes", type="secondary"):
-                res = api_client.post(f"/markets/{active_id}/resolve", json={"outcome": "yes"}).json()
-                mm_pl = res.get("market_maker_pl", res.get("pl", 0.0))
-                st.success(f"Resolved to Yes. MM P/L: {mm_pl:.4f}")
+                res = _safe_api(f"/markets/{active_id}/resolve", method="POST", json={"outcome": "yes"})
+                if "error" not in res:
+                    mm_pl = res.get("market_maker_pl", res.get("pl", 0.0))
+                    st.success(f"Resolved to Yes. MM P/L: {mm_pl:.4f}")
                 st.rerun()
         with c2:
             if st.button("Resolve to No", type="secondary"):
-                res = api_client.post(f"/markets/{active_id}/resolve", json={"outcome": "no"}).json()
-                mm_pl = res.get("market_maker_pl", res.get("pl", 0.0))
-                st.success(f"Resolved to No. MM P/L: {mm_pl:.4f}")
+                res = _safe_api(f"/markets/{active_id}/resolve", method="POST", json={"outcome": "no"})
+                if "error" not in res:
+                    mm_pl = res.get("market_maker_pl", res.get("pl", 0.0))
+                    st.success(f"Resolved to No. MM P/L: {mm_pl:.4f}")
                 st.rerun()
     else:
         st.subheader("Resolution & Stored Scores")
