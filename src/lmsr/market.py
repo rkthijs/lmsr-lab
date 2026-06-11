@@ -85,7 +85,15 @@ class BinaryLMSRMarket:
     user_positions : dict[str, np.ndarray]
         Separate ledger of each user's holdings.
     total_revenue : float
-        Total money collected by the market maker so far (including fees).
+        Net cash the market maker has received from traders so far
+        (sum of effective_cost over all trades, positive and negative).
+        Used for final P/L accounting at resolution.
+
+    total_fees_earned : float
+        Total fees/spread captured by the market maker across all trades
+        (both buys and sells). This is the amount the MM actually "makes"
+        from the asymmetric fee model / spread. Always non-negative and
+        only increases.
 
     Design Notes
     ------------
@@ -125,6 +133,7 @@ class BinaryLMSRMarket:
         self.q = np.array([0.0, 0.0])
         self.user_positions: dict[str, np.ndarray] = {}
         self.total_revenue = 0.0
+        self.total_fees_earned = 0.0
 
     @property
     def b(self) -> float:
@@ -377,12 +386,17 @@ class BinaryLMSRMarket:
 
         self.total_revenue += effective_cost
 
+        # Always record the positive fee/spread earned by the MM on this trade.
+        # This captures the spread whether the trader is buying or selling.
+        fee = effective_cost - raw_cost
+        self.total_fees_earned += fee
+
         new_prices = self.price()
 
         return {
             "cost": effective_cost,
             "raw_cost": raw_cost,
-            "fee": effective_cost - raw_cost,
+            "fee": fee,
             "new_prices": new_prices,
             "user_position": self.user_positions[user_id].copy(),
         }
@@ -484,7 +498,10 @@ class BinaryLMSRMarket:
             - "market_maker_pl" : float
                 Profit/loss for the market maker.
             - "total_revenue" : float
-                Total money collected from all trades (including fees).
+                Net cash received from traders (sum of effective_cost).
+            - "total_fees_earned" : float
+                Total spread/fees captured by the market maker on all trades
+                (both buy and sell sides). This is what the MM actually earns.
             - "payout" : float
                 Total amount paid out to winners.
             - "winning_outcome" : str
@@ -499,6 +516,7 @@ class BinaryLMSRMarket:
         return {
             "market_maker_pl": pl,
             "total_revenue": self.total_revenue,
+            "total_fees_earned": self.total_fees_earned,
             "payout": payout,
             "winning_outcome": outcome,
         }
@@ -513,3 +531,4 @@ class BinaryLMSRMarket:
         self.q = np.array([0.0, 0.0])
         self.user_positions = {}
         self.total_revenue = 0.0
+        self.total_fees_earned = 0.0

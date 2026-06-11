@@ -801,6 +801,7 @@ class LMSRMarketSimulator:
                 "current_prices": market.engine.price(),
                 "total_trades": len(market.trades),
                 "total_revenue": market.engine.total_revenue,
+                "total_fees_earned": market.engine.total_fees_earned,
             }
         else:
             return {

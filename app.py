@@ -537,7 +537,13 @@ with tab_trade:
     with cols[2]:
         st.metric("Traders", len(set(t.user_id for t in market.trades)))
     with cols[3]:
-        st.metric("MM Revenue (so far)", f"{market.engine.total_revenue:,.2f}")
+        st.metric(
+            "Fees Earned (Spread)",
+            f"{market.engine.total_fees_earned:,.2f}",
+            help="Total fees/spread captured by the market maker on all trades (buys + sells). "
+                 "This is what the MM actually makes from the asymmetric fee model. "
+                 "Net cash position (used for P/L at resolution) may differ due to sells."
+        )
 
     # Only the visible market's b controls + price chart live in a fragment.
     # Changing b here only reruns this fragment — Portfolio, Leaderboard and
@@ -653,6 +659,7 @@ with tab_trade:
         st.subheader("Resolution & Stored Scores")
 
         st.metric("Market Maker Final P/L", f"{market.engine.total_revenue - sum(p.amount for p in market.payouts):.4f}")
+        st.caption(f"Total fees/spread earned: {market.engine.total_fees_earned:,.2f}")
 
         stored_scores = sim.get_scores(active_id)
         if stored_scores:
