@@ -26,6 +26,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from examples.ui_300_round_bots import seed_long_bot_demo
 from src.lmsr.simulator import LMSRMarketSimulator
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,8 @@ def load_history_into_simulator(
 
     # Prefer values from the history file when available
     params = history.get("market_params", {})
+    # default 25 only as fallback for old histories; new ones (and calls above) use
+    # values chosen via the b-recommendation tool for plausibility.
     effective_b = b if b is not None else params.get("b", 25.0)
     effective_fee = fee_rate if fee_rate is not None else params.get("fee_rate", 0.02)
     effective_subsidy = (
@@ -108,6 +111,9 @@ def load_history_into_simulator(
 
 def seed_balanced_demo(sim: LMSRMarketSimulator) -> str:
     """Simple balanced trading on both sides. Good for exploring price impact."""
+    # b=25 (low) for this demo: using b-recommendation tool (small typical bet size + high desired
+    # impact per trade) produces values in the 20-40 range. Low b makes individual trades move
+    # prices visibly — good for teaching price impact and the recommender itself.
     return load_history_into_simulator(
         sim,
         "examples/trade_histories/balanced_trades.json",
@@ -143,6 +149,9 @@ def seed_kelly_high_activity(sim: LMSRMarketSimulator) -> str:
 
 def seed_long_trend_demo(sim: LMSRMarketSimulator) -> str:
     """Long gradual trend — good for seeing slow price discovery with higher b."""
+    # b=60 chosen as a moderate "plausible" value via the recommendation tool
+    # (typical_size ~50-70, desired_move ~6-8%, medium-high activity, subsidy 1000
+    # → rec_b in 50-120 range; 60 is a nice sweet spot for a long slow trend demo).
     return load_history_into_simulator(
         sim,
         "examples/trade_histories/very_long_gradual_trend.json",
@@ -157,6 +166,10 @@ def seed_experts_vs_punters(sim: LMSRMarketSimulator) -> str:
     Small number of well-calibrated experts + large crowd of noisy punters.
     Excellent for exploring very high b (200-1000).
     """
+    # Very high b=500 (or 280 when generating) is the plausible recommendation for this
+    # large-scale, long-horizon, high-volume "Experts vs Punters" market.
+    # Recommender with large effective volume / high subsidy tolerance easily suggests
+    # 200–1000+ (see the b-explorer tool + the comment in generate_kelly_histories.py).
     return load_history_into_simulator(
         sim,
         "examples/trade_histories/experts_vs_punters_10000.json",
@@ -209,6 +222,7 @@ SCENARIO_REGISTRY = {
     "Very Long Gradual Trend (Open)": seed_long_trend_demo,
     "Full Teaching Demo (Multi-Market)": seed_full_teaching_demo,
     "Experts vs Punters (p=0.85, long horizon)": seed_experts_vs_punters,
+    "Long Bot Activity Demo (300 rounds, Open)": seed_long_bot_demo,
 }
 
 
