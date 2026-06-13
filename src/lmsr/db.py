@@ -1,22 +1,36 @@
 """
-SQLite-backed persistence for the LMSR simulator.
+SQLite-backed persistence for the LMSR simulator (prototype implementation
+of the architecture in DESIGN.md).
 
-This replaces the pickle save/load for durable storage while keeping
-the in-memory simulator logic intact (great for tests, experiments,
-and replay).
+Key conformance points (see DESIGN.md § "Reference SQL Schema", "Trade Flow",
+"Resolution", and "The Critical Accounting Invariant"):
+- Immutable append-only trades table (positions, P/L always derived by replay).
+- Load by replaying the trade log (positions recomputed, never trusted from storage).
+- Critical operations (trade + balance; full resolution including payouts +
+  balance credits + filling of trade-time Score *stubs*) run inside explicit
+  BEGIN IMMEDIATE transactions with rollback.
+- Stub Score rows are inserted at trade time (only forecast_prob + trade_id);
+  they are filled with outcome + Brier + Log scores at resolution.
+- Accounting identity (total_payouts_recorded == winning q, remainder) is
+  enforced at resolution time via check_accounting_identity.
+- No materialized positions table (recomputable from trades, per spec).
 
-Schema is derived from DESIGN.md with small adaptations:
-- TEXT ids (for compatibility with current "m1"/"alice" style ids)
-- REAL for numeric values (NUMERIC(20,8) semantics approximated in Python float)
-- Extra columns on markets for persisting adaptive b strategies
+Schema adaptations for SQLite prototype (explicitly noted):
+- TEXT ids instead of UUID (convenient for demo "m1"/"alice" style).
+- REAL columns (approximates NUMERIC(20,8) + Python float).
+- Extra columns on markets for adaptive b strategy persistence (post-DESIGN
+  feature; b is reconstructed on load via reconstruct_b).
+- shares_yes/no stored as whole numbers (enforced at higher layers).
 
-The simulator (when given a db_path) will:
-- Load historical state on init by replaying trades (positions derived)
-- Persist new markets, trades, user balances, payouts, and scores on mutation
-- Support :memory: for tests or a file path for the demo/API
+The simulator (db_path=...) will:
+- On init: _load_from_db() → users (balances) + markets + replay trades into
+  engines (low-level, no balance side effects) + load payouts/scores (stubs ok).
+- On mutation: persist via the tx-protected paths above.
+- :memory: or file path supported; legacy pickle + JSON still available.
 
-Atomicity for critical operations (trade + balance update) is done
-with DB transactions where possible.
+See also:
+- simulator.py:place_trade, resolve_market, _load_from_db, _create_payouts...
+- DESIGN.md sections on immutable log, derived state, and the accounting view.
 """
 
 from __future__ import annotations
@@ -24,7 +38,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .adaptive import BoundedB, LinearVolumeB
 
@@ -150,7 +164,7 @@ class SQLiteStore:
             self.conn.commit()
         return {"id": user_id, "display_name": display_name or user_id, "balance": float(balance), "created_at": now}
 
-    def get_user(self, user_id: str) -> Optional[dict[str, Any]]:
+    def get_user(self, user_id: str) -> dict[str, Any] | None:
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
         row = cur.fetchone()
@@ -234,7 +248,7 @@ class SQLiteStore:
         if commit:
             self.conn.commit()
 
-    def get_market(self, market_id: str) -> Optional[dict[str, Any]]:
+    def get_market(self, market_id: str) -> dict[str, Any] | None:
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM markets WHERE id = ?", (market_id,))
         row = cur.fetchone()
@@ -273,8 +287,8 @@ class SQLiteStore:
                 trade["id"],
                 trade["market_id"],
                 trade["user_id"],
-                float(trade["shares_yes"]),
-                float(trade["shares_no"]),
+                int(trade["shares_yes"]),
+                int(trade["shares_no"]),
                 float(trade["raw_cost"]),
                 float(trade["fee"]),
                 float(trade["effective_cost"]),
@@ -328,6 +342,16 @@ class SQLiteStore:
 
     def save_score(self, score: dict[str, Any], commit: bool = True) -> None:
         cur = self.conn.cursor()
+        # Handle stub scores (from trade time) where outcome/brier/log may be None;
+        # these get filled at resolution time per DESIGN.md.
+        def _f(val, default=0.0):
+            if val is None:
+                return None
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return float(default)
+
         cur.execute(
             """
             INSERT OR REPLACE INTO scores
@@ -339,9 +363,9 @@ class SQLiteStore:
                 score["user_id"],
                 score["trade_id"],
                 float(score["forecast_prob"]),
-                float(score.get("outcome", 0)),
-                float(score.get("brier_score", 0)),
-                float(score.get("log_score", 0)),
+                _f(score.get("outcome")),
+                _f(score.get("brier_score")),
+                _f(score.get("log_score")),
                 score.get("created_at") or _now_iso(),
             ),
         )

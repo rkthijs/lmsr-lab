@@ -57,9 +57,11 @@ References
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any, Union
+
 import numpy as np
 import numpy.typing as npt
-from typing import Any, Callable, Union
 
 # Type for b: either a fixed float or a function q -> b
 BType = Union[float, Callable[[npt.NDArray[np.floating]], float]]
@@ -301,16 +303,32 @@ class BinaryLMSRMarket:
         """
         return self._stable_prices(self.q)
 
+    def _validate_shares(self, shares_yes: float, shares_no: float) -> tuple[int, int]:
+        """
+        Enforce that only whole-number (integer) shares are allowed.
+        No fractional shares, ever.
+        """
+        sy = float(shares_yes)
+        sn = float(shares_no)
+        if not (sy.is_integer() and sn.is_integer()):
+            raise ValueError(
+                "Fractional shares are not allowed. "
+                "shares_yes and shares_no must be whole numbers (e.g. 15 or -12, not 10.5)."
+            )
+        return int(sy), int(sn)
+
     def quote(self, shares_yes: float = 0.0, shares_no: float = 0.0) -> tuple[float, float]:
         """
         Return the cost (with fee) of a hypothetical trade without executing it.
 
         Parameters
         ----------
-        shares_yes : float, default 0.0
+        shares_yes : float | int, default 0.0
             Number of Yes shares to buy (positive) or sell (negative).
-        shares_no : float, default 0.0
+            Must be a whole number (no fractional shares).
+        shares_no : float | int, default 0.0
             Number of No shares to buy (positive) or sell (negative).
+            Must be a whole number.
 
         Returns
         -------
@@ -320,6 +338,7 @@ class BinaryLMSRMarket:
         raw_cost : float
             The pure LMSR cost of the trade before fees.
         """
+        shares_yes, shares_no = self._validate_shares(shares_yes, shares_no)
         delta = np.array([shares_yes, shares_no], dtype=float)
         raw_cost = self._raw_cost_delta(delta)
 
@@ -340,10 +359,12 @@ class BinaryLMSRMarket:
         ----------
         user_id : str
             Identifier for the user executing the trade.
-        shares_yes : float, default 0.0
+        shares_yes : float | int, default 0.0
             Number of Yes shares to buy (positive) or sell (negative).
-        shares_no : float, default 0.0
+            Must be a whole number (no fractional shares allowed).
+        shares_no : float | int, default 0.0
             Number of No shares to buy (positive) or sell (negative).
+            Must be a whole number.
 
         Returns
         -------
@@ -357,15 +378,16 @@ class BinaryLMSRMarket:
                     Fee paid to the market maker.
                 - "new_prices" : tuple[float, float]
                     (p_yes, p_no) after the trade.
-                - "user_position" : ndarray of shape (2,)
+                - "user_position" : list of two ints
                     User's new [yes_shares, no_shares].
 
             On failure (insufficient shares to sell):
                 - "error" : str
                     "Insufficient shares"
-                - "current_position" : ndarray
+                - "current_position" : list
                     User's position before the failed trade.
         """
+        shares_yes, shares_no = self._validate_shares(shares_yes, shares_no)
         delta = np.array([shares_yes, shares_no], dtype=float)
 
         current = self.user_positions.get(user_id, np.array([0.0, 0.0]))
@@ -373,7 +395,7 @@ class BinaryLMSRMarket:
         if new_pos[0] < 0 or new_pos[1] < 0:
             return {
                 "error": "Insufficient shares",
-                "current_position": current.copy(),
+                "current_position": [int(x) for x in current],
             }
 
         effective_cost, raw_cost = self.quote(shares_yes, shares_no)
@@ -398,7 +420,7 @@ class BinaryLMSRMarket:
             "raw_cost": float(raw_cost),
             "fee": float(fee),
             "new_prices": new_prices,
-            "user_position": [float(x) for x in self.user_positions[user_id]],
+            "user_position": [int(x) for x in self.user_positions[user_id]],
         }
 
     def instantaneous_impact(
@@ -411,10 +433,10 @@ class BinaryLMSRMarket:
 
         Parameters
         ----------
-        shares_yes : float, default 0.0
-            Hypothetical Yes shares to trade.
-        shares_no : float, default 0.0
-            Hypothetical No shares to trade.
+        shares_yes : float | int, default 0.0
+            Hypothetical Yes shares to trade (must be whole number).
+        shares_no : float | int, default 0.0
+            Hypothetical No shares to trade (must be whole number).
 
         Returns
         -------
@@ -424,6 +446,7 @@ class BinaryLMSRMarket:
             - "impact" : tuple[float, float]
                 Change in price for (Yes, No).
         """
+        shares_yes, shares_no = self._validate_shares(shares_yes, shares_no)
         p_before = self.price()
         delta = np.array([shares_yes, shares_no], dtype=float)
         new_q = self.q + delta
@@ -445,10 +468,10 @@ class BinaryLMSRMarket:
 
         Parameters
         ----------
-        shares_yes : float, default 0.0
-            Proposed Yes shares.
-        shares_no : float, default 0.0
-            Proposed No shares.
+        shares_yes : float | int, default 0.0
+            Proposed Yes shares (must be whole number).
+        shares_no : float | int, default 0.0
+            Proposed No shares (must be whole number).
 
         Returns
         -------
@@ -457,6 +480,7 @@ class BinaryLMSRMarket:
             - "slippage" : float
                 Absolute difference between average execution price and current price.
         """
+        shares_yes, shares_no = self._validate_shares(shares_yes, shares_no)
         p_before = self.price()[0]
         effective_cost, _ = self.quote(shares_yes, shares_no)
         total_shares = shares_yes + shares_no

@@ -35,7 +35,7 @@ Example usage (single bot):
     print("Prices:", obs["prices"])
     print("Current b:", obs["current_b"])
     print("My position:", obs["position"])
-    print("Balance:", obs["balance"])
+    print("Cash:", obs["cash_balance"], "Pos value:", obs["position_value"], "Total:", obs["total_value"])
 
     # Hypothetical cost (no execution)
     quote = agent.quote(m.id, shares_yes=10)
@@ -50,8 +50,6 @@ The core `LMSRMarketSimulator` remains the single source of truth.
 from __future__ import annotations
 
 from typing import Any
-
-import numpy as np
 
 from .market import BType
 from .simulator import LMSRMarketSimulator, Market, UserPortfolio
@@ -132,6 +130,7 @@ class TradingAgent:
         """
         Execute a trade (positive = buy, negative = sell).
 
+        shares_yes / shares_no must be whole numbers. Fractional shares are not allowed.
         Returns the result dict from the underlying engine (cost, raw_cost, fee, etc.)
         or an error dict.
         """
@@ -140,25 +139,25 @@ class TradingAgent:
         )
 
     def buy_yes(self, market_id: str, shares: float) -> dict[str, Any]:
-        """Buy Yes shares (convenience wrapper)."""
+        """Buy Yes shares (convenience wrapper). shares must be a whole number."""
         if shares <= 0:
             raise ValueError("shares must be positive for buy_yes")
         return self.trade(market_id, shares_yes=shares)
 
     def buy_no(self, market_id: str, shares: float) -> dict[str, Any]:
-        """Buy No shares (convenience wrapper)."""
+        """Buy No shares (convenience wrapper). shares must be a whole number."""
         if shares <= 0:
             raise ValueError("shares must be positive for buy_no")
         return self.trade(market_id, shares_no=shares)
 
     def sell_yes(self, market_id: str, shares: float) -> dict[str, Any]:
-        """Sell Yes shares you hold (convenience wrapper)."""
+        """Sell Yes shares you hold (convenience wrapper). shares must be a whole number."""
         if shares <= 0:
             raise ValueError("shares must be positive for sell_yes")
         return self.trade(market_id, shares_yes=-shares)
 
     def sell_no(self, market_id: str, shares: float) -> dict[str, Any]:
-        """Sell No shares you hold (convenience wrapper)."""
+        """Sell No shares you hold (convenience wrapper). shares must be a whole number."""
         if shares <= 0:
             raise ValueError("shares must be positive for sell_no")
         return self.trade(market_id, shares_no=-shares)
@@ -167,9 +166,10 @@ class TradingAgent:
     # Observation / state queries (scoped to this agent)
     # ------------------------------------------------------------------
 
-    def get_position(self, market_id: str) -> np.ndarray:
-        """Return this agent's current [yes_shares, no_shares] in the market."""
-        return self.simulator.get_user_position(market_id, self.user_id)
+    def get_position(self, market_id: str) -> list[int]:
+        """Return this agent's current [yes_shares, no_shares] in the market (whole numbers)."""
+        pos = self.simulator.get_user_position(market_id, self.user_id)
+        return [int(pos[0]), int(pos[1])]
 
     def get_prices(self, market_id: str) -> tuple[float, float]:
         """Return current (p_yes, p_no) for the market."""
@@ -194,19 +194,18 @@ class TradingAgent:
         it easy to build observation vectors for reinforcement learning or
         to drive simple rule-based agents.
 
-        The returned dict includes:
-            - market_id, status
-            - prices: (p_yes, p_no)
-            - current_b (automatically evaluates adaptive strategies)
-            - is_adaptive
-            - position: dict with "yes", "no", "total"
-            - balance (this agent's current balance)
-            - fee_rate
-            - num_trades (trades executed in this market so far)
+        The returned dict includes the three core account values users care about:
+            - cash_balance: current cash (same as get_balance / get_cash_balance)
+            - position_value: MTM value of *this market's* position at current prices
+            - total_value: global cash + sum of position values across *all* markets
+
+        Plus the usual per-market details.
         """
         market = self.get_market(market_id)
         prices = market.engine.price()
         pos = self.get_position(market_id)
+        pos_value = float(pos[0] * prices[0] + pos[1] * prices[1])
+        cash = self.get_balance()
         return {
             "market_id": market_id,
             "status": market.status,
@@ -214,11 +213,14 @@ class TradingAgent:
             "current_b": market.current_b,
             "is_adaptive": market.is_adaptive_b,
             "position": {
-                "yes": float(pos[0]),
-                "no": float(pos[1]),
-                "total": float(pos[0] + pos[1]),
+                "yes": int(pos[0]),
+                "no": int(pos[1]),
+                "total": int(pos[0] + pos[1]),
             },
-            "balance": self.get_balance(),
+            "balance": cash,                 # kept for backward compat
+            "cash_balance": cash,
+            "position_value": pos_value,
+            "total_value": self.get_total_value(),
             "fee_rate": market.fee_rate,
             "num_trades": len(market.trades),
         }
@@ -230,6 +232,7 @@ class TradingAgent:
         Get cost, raw cost, and fee for a hypothetical trade without executing.
 
         Useful for agents that want to evaluate actions before committing.
+        shares_yes/shares_no must be whole numbers (no fractional shares).
         """
         market = self.get_market(market_id)
         effective, raw = market.engine.quote(shares_yes, shares_no)
@@ -244,11 +247,35 @@ class TradingAgent:
     # ------------------------------------------------------------------
 
     def get_balance(self) -> float:
-        """Current play-money balance for this agent."""
+        """Current play-money balance (cash) for this agent."""
         return self.simulator.get_balance(self.user_id)
 
+    def get_cash_balance(self) -> float:
+        """Current cash balance. Clear synonym for get_balance()."""
+        return self.get_balance()
+
+    def get_position_value(self, market_id: str | None = None) -> float:
+        """
+        Mark-to-market value of positions.
+
+        If market_id is given: value of the position in that single market.
+        If None (default): sum of MTM values across *all* markets for this agent.
+        """
+        if market_id is not None:
+            prices = self.get_prices(market_id)
+            pos = self.get_position(market_id)
+            return float(pos[0] * prices[0] + pos[1] * prices[1])
+        return self.simulator.get_user_position_value(self.user_id)
+
+    def get_total_value(self) -> float:
+        """Total account value = cash balance + current position MTM (all markets)."""
+        return self.get_cash_balance() + self.get_position_value()
+
     def get_portfolio(self) -> UserPortfolio:
-        """Rich cross-market view of this agent's positions, PnL, etc."""
+        """Rich cross-market view of this agent's positions, PnL, etc.
+
+        The portfolio object now carries .balance (cash), .position_value, and .total_value.
+        """
         return self.simulator.get_user_portfolio(self.user_id)
 
     # ------------------------------------------------------------------

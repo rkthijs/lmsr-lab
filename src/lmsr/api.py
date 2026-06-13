@@ -68,8 +68,8 @@ class MarketCreate(BaseModel):
 
 class TradeRequest(BaseModel):
     user_id: str
-    shares_yes: float = 0.0
-    shares_no: float = 0.0
+    shares_yes: int = 0
+    shares_no: int = 0
 
 
 class ResolveRequest(BaseModel):
@@ -215,7 +215,11 @@ def place_trade(market_id: str, trade: TradeRequest):
 
 @app.get("/markets/{market_id}/observe")
 def observe(market_id: str, user_id: str = Query(..., description="User / agent id")):
-    """Convenient endpoint that returns a rich observation (similar to TradingAgent.observe)."""
+    """Convenient endpoint that returns a rich observation (similar to TradingAgent.observe).
+
+    Includes the three key values: cash_balance, position_value (for this market),
+    and total_value (global cash + all positions).
+    """
     sim = get_sim()
     try:
         market = sim.get_market(market_id)
@@ -224,6 +228,9 @@ def observe(market_id: str, user_id: str = Query(..., description="User / agent 
 
     prices = market.engine.price()
     pos = sim.get_user_position(market_id, user_id)
+    pos_value = float(pos[0] * prices[0] + pos[1] * prices[1])
+    cash = sim.get_balance(user_id)
+    total = sim.get_user_total_value(user_id)
     return {
         "market_id": market_id,
         "status": market.status,
@@ -231,19 +238,24 @@ def observe(market_id: str, user_id: str = Query(..., description="User / agent 
         "current_b": market.current_b,
         "is_adaptive": market.is_adaptive_b,
         "position": {
-            "yes": float(pos[0]),
-            "no": float(pos[1]),
-            "total": float(pos[0] + pos[1]),
+            "yes": int(pos[0]),
+            "no": int(pos[1]),
+            "total": int(pos[0] + pos[1]),
         },
-        "balance": sim.get_balance(user_id),
+        "balance": cash,                 # kept for backward compat
+        "cash_balance": cash,
+        "position_value": pos_value,
+        "total_value": total,
         "fee_rate": market.fee_rate,
         "num_trades": len(market.trades),
     }
 
 
 @app.get("/markets/{market_id}/quote")
-def quote_trade(market_id: str, shares_yes: float = 0.0, shares_no: float = 0.0):
-    """Pure quote (cost estimate) without executing or requiring a user."""
+def quote_trade(market_id: str, shares_yes: int = 0, shares_no: int = 0):
+    """Pure quote (cost estimate) without executing or requiring a user.
+    Shares must be integers (no fractional shares).
+    """
     sim = get_sim()
     try:
         market = sim.get_market(market_id)
@@ -297,6 +309,27 @@ def get_portfolio(user_id: str):
 def get_balance(user_id: str):
     sim = get_sim()
     return {"user_id": user_id, "balance": sim.get_balance(user_id)}
+
+
+@app.get("/users/{user_id}/account")
+def get_account(user_id: str):
+    """Canonical 'three values' summary for a user: cash, open position MTM, and total account value.
+
+    This is the recommended way for UIs and clients to show the always-visible
+    account overview (cash balance, position value, total equity).
+    """
+    sim = get_sim()
+    try:
+        cash = sim.get_balance(user_id)
+        pos_val = sim.get_user_position_value(user_id)
+        return {
+            "user_id": user_id,
+            "cash_balance": cash,
+            "position_value": pos_val,
+            "total_value": cash + pos_val,
+        }
+    except Exception as e:
+        raise HTTPException(404, str(e)) from None
 
 
 @app.post("/markets/{market_id}/resolve")

@@ -73,13 +73,14 @@ class Trade:
 
     This is the atomic unit of history. In a real system this would map
     directly to a row in the `trades` table (see DESIGN.md schema).
+    Shares are always whole numbers (no fractional shares allowed).
     """
     id: str                     # stable identifier for linking scores, etc.
     market_id: str
     timestamp: datetime
     user_id: str
-    shares_yes: float
-    shares_no: float
+    shares_yes: int
+    shares_no: int
     raw_cost: float
     fee: float
     effective_cost: float
@@ -105,9 +106,18 @@ class Payout:
 @dataclass(frozen=True)
 class Score:
     """
-    Stored calibration score for a specific forecast (trade) after resolution.
+    Stored calibration score for a specific forecast (trade).
 
-    Mirrors the `scores` table design from DESIGN.md.
+    Per DESIGN.md:
+    - A *stub* version (only forecast_prob + trade_id) is inserted at trade time.
+    - It is filled with outcome + brier_score + log_score at resolution time,
+      using the price_after_yes recorded on the corresponding Trade as the
+      revealed belief ("forecast_prob").
+    - This is the incentive-compatible choice (scored on the belief at the
+      moment the trader acted).
+
+    Mirrors the `scores` table design from DESIGN.md (composite PK on
+    market_id + trade_id; outcome nullable until resolution).
     """
     market_id: str
     user_id: str
@@ -139,14 +149,20 @@ class UserPortfolio:
     Aggregated view of everything a user has across all markets.
 
     This is the main deliverable of the "better user model".
+    Includes the three values users care about most:
+      - cash balance (the 'balance' field)
+      - current mark-to-market value of open positions (position_value)
+      - total account value = cash + position_value (total_value)
     """
     user_id: str
-    balance: float
-    positions: dict[str, dict[str, float]]   # market_id -> {"yes": x, "no": y, "total": x+y}
+    balance: float                  # cash balance
+    positions: dict[str, dict]      # market_id -> {"yes", "no", "total", "value"?, "p_yes"?, "p_no"?}
     realized_pnl: float
     total_payouts_received: float
     open_markets_count: int
     resolved_markets_count: int
+    position_value: float = 0.0     # MTM value of current open share holdings at latest prices
+    total_value: float = 0.0        # balance + position_value (total account equity)
 
 
 @dataclass
@@ -205,6 +221,11 @@ class LMSRMarketSimulator:
     - Improved User model with balances and cross-market Portfolio views
     - Global leaderboard based on calibration (Brier/Log) and realized P/L
     - Clean separation between market metadata and the mathematical engine
+    - Optional SQLite persistence (db_path) with:
+        * Load by replaying immutable trade log (positions always derived)
+        * Score *stubs* inserted at trade time (DESIGN.md), filled on resolve
+        * Transactions around trade+balance+stub and full resolution
+        * Accounting identity validation on resolve + on load for resolved markets
 
     Usage example:
         sim = LMSRMarketSimulator()
@@ -228,7 +249,14 @@ class LMSRMarketSimulator:
             self._load_from_db()
 
     def _load_from_db(self) -> None:
-        """Hydrate the in-memory simulator from the DB (replay trades, load balances etc)."""
+        """Hydrate the in-memory simulator from the DB.
+
+        Per DESIGN.md: state is loaded by *replaying the immutable trade log*.
+        Positions are always derived (never stored). User balances are the
+        current snapshot from the users table. Score rows may be stubs
+        (inserted at trade time, with only forecast_prob) or fully populated
+        (after resolution).
+        """
         if not self._db:
             return
 
@@ -285,8 +313,8 @@ class LMSRMarketSimulator:
                     market_id=mid,
                     timestamp=datetime.fromisoformat(tdata["created_at"]) if tdata.get("created_at") else datetime.now(timezone.utc),
                     user_id=tdata["user_id"],
-                    shares_yes=float(tdata["shares_yes"]),
-                    shares_no=float(tdata["shares_no"]),
+                    shares_yes=int(tdata["shares_yes"]),
+                    shares_no=int(tdata["shares_no"]),
                     raw_cost=float(tdata["raw_cost"]),
                     fee=float(tdata["fee"]),
                     effective_cost=float(tdata["effective_cost"]),
@@ -310,6 +338,7 @@ class LMSRMarketSimulator:
             self._next_market_id = max_id + 1
 
         # load payouts and scores into the market objects
+        # (scores may be trade-time stubs or resolution-filled versions)
         for mid, market in self.markets.items():
             for pdata in self._db.get_payouts(market_id=mid):
                 market.payouts.append(
@@ -328,12 +357,25 @@ class LMSRMarketSimulator:
                         user_id=sdata["user_id"],
                         trade_id=sdata["trade_id"],
                         forecast_prob=float(sdata["forecast_prob"]),
-                        outcome=float(sdata.get("outcome", 0)),
-                        brier_score=float(sdata.get("brier_score", 0)),
-                        log_score=float(sdata.get("log_score", 0)),
+                        outcome=float(sdata.get("outcome", 0)) if sdata.get("outcome") is not None else None,
+                        brier_score=float(sdata.get("brier_score", 0)) if sdata.get("brier_score") is not None else None,
+                        log_score=float(sdata.get("log_score", 0)) if sdata.get("log_score") is not None else None,
                         timestamp=datetime.fromisoformat(sdata["created_at"]) if sdata.get("created_at") else datetime.now(timezone.utc),
                     )
                 )
+
+        # Strengthen conformance to DESIGN.md: for any resolved markets loaded
+        # from DB, re-validate the critical accounting identity (total_payouts
+        # == winning q, remainder, etc.). We attach a private warning attr for
+        # diagnostics rather than failing the load (this is a research tool).
+        for mid, market in list(self.markets.items()):
+            if getattr(market, "status", None) == "resolved":
+                try:
+                    acc = self.check_accounting_identity(mid)
+                    if not acc.get("is_valid"):
+                        market._accounting_warning = acc
+                except Exception:
+                    pass
 
     def db_summary(self) -> dict[str, Any]:
         """Return summary info from the DB (if configured) for inspection."""
@@ -560,9 +602,16 @@ class LMSRMarketSimulator:
         return leaderboard
 
     def _compute_and_store_scores(self, market: Market, winning: str, timestamp: datetime) -> None:
-        """Private helper extracted from resolve_market for clarity."""
+        """Private helper extracted from resolve_market for clarity.
+
+        Fills (or replaces) the stub Score rows that were inserted at trade time
+        (see place_trade + DESIGN.md §5 Trade Flow step 7).
+        The forecast_prob was captured at trade time from price_after_yes;
+        here we add outcome + Brier/Log scores.
+        """
         outcome_value = 1.0 if winning == "yes" else 0.0
 
+        filled = []
         for trade in market.trades:
             forecast = trade.price_after_yes
             brier = float(brier_score([forecast], [outcome_value])[0])
@@ -578,7 +627,7 @@ class LMSRMarketSimulator:
                 log_score=log_s,
                 timestamp=timestamp,
             )
-            market.scores.append(score)
+            filled.append(score)
 
             if self._db:
                 try:
@@ -595,10 +644,18 @@ class LMSRMarketSimulator:
                 except Exception:
                     pass
 
+        # Replace any prior stubs with the now-filled versions (avoids duplicates
+        # and ensures in-memory list matches what was persisted).
+        market.scores = filled
+
     def _get_user_aggregates(self, user_id: str) -> dict:
         """
         Internal helper that builds aggregated data for a user across all markets.
         Used by both get_user_portfolio() and get_leaderboard() to avoid duplication.
+
+        Now also computes current position_value (MTM) for open positions.
+        Per-market position entries for open markets are enriched with:
+            "value": current MTM of that position, "p_yes", "p_no"
         """
         positions = {}
         realized_pnl = 0.0
@@ -606,17 +663,19 @@ class LMSRMarketSimulator:
         resolved_trades = 0
         open_count = 0
         resolved_count = 0
+        position_value = 0.0
 
         for market in self.markets.values():
             pos = self.get_user_position(market.id, user_id)
-            positions[market.id] = {
-                "yes": float(pos[0]),
-                "no": float(pos[1]),
-                "total": float(pos[0] + pos[1]),
+            entry = {
+                "yes": int(pos[0]),
+                "no": int(pos[1]),
+                "total": int(pos[0] + pos[1]),
             }
 
             if market.status == "resolved":
                 resolved_count += 1
+                entry["value"] = 0.0
                 for p in market.payouts:
                     if p.user_id == user_id:
                         total_payouts += p.amount
@@ -625,6 +684,15 @@ class LMSRMarketSimulator:
                 resolved_trades += sum(1 for s in market.scores if s.user_id == user_id)
             else:
                 open_count += 1
+                prices = market.engine.price()
+                p_yes, p_no = float(prices[0]), float(prices[1])
+                mv = pos[0] * p_yes + pos[1] * p_no
+                entry["value"] = float(mv)
+                entry["p_yes"] = p_yes
+                entry["p_no"] = p_no
+                position_value += mv
+
+            positions[market.id] = entry
 
         return {
             "positions": positions,
@@ -633,14 +701,22 @@ class LMSRMarketSimulator:
             "resolved_trades": resolved_trades,
             "open_count": open_count,
             "resolved_count": resolved_count,
+            "position_value": position_value,
         }
 
     def get_user_portfolio(self, user_id: str) -> UserPortfolio:
         """
         Return a rich aggregated view of everything the user has.
+
+        The returned UserPortfolio now always includes:
+          - balance: current cash balance
+          - position_value: sum of mark-to-market values of open positions
+          - total_value: balance + position_value
+        Per-market position dicts for open markets contain "value" (MTM) + current prices.
         """
         user = self.get_user(user_id)
         agg = self._get_user_aggregates(user_id)
+        pv = agg.get("position_value", 0.0)
 
         return UserPortfolio(
             user_id=user_id,
@@ -650,7 +726,18 @@ class LMSRMarketSimulator:
             total_payouts_received=agg["total_payouts"],
             open_markets_count=agg["open_count"],
             resolved_markets_count=agg["resolved_count"],
+            position_value=pv,
+            total_value=user.balance + pv,
         )
+
+    def get_user_position_value(self, user_id: str) -> float:
+        """Return the current mark-to-market value of all this user's open positions."""
+        agg = self._get_user_aggregates(user_id)
+        return agg.get("position_value", 0.0)
+
+    def get_user_total_value(self, user_id: str) -> float:
+        """Return total account value = cash balance + current position MTM value."""
+        return self.get_balance(user_id) + self.get_user_position_value(user_id)
 
     # ------------------------------------------------------------------
     # Accounting Identity (critical invariant from DESIGN.md)
@@ -830,7 +917,7 @@ class LMSRMarketSimulator:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], db_path: str | Path | None = None) -> "LMSRMarketSimulator":
+    def from_dict(cls, data: dict[str, Any], db_path: str | Path | None = None) -> LMSRMarketSimulator:
         """Reconstruct a simulator from a dict produced by to_dict()."""
         sim = cls(db_path=db_path)  # this may load from DB if provided, but we will override
 
@@ -892,8 +979,8 @@ class LMSRMarketSimulator:
                     market_id=mid,
                     timestamp=datetime.fromisoformat(td["timestamp"]),
                     user_id=td["user_id"],
-                    shares_yes=float(td["shares_yes"]),
-                    shares_no=float(td["shares_no"]),
+                    shares_yes=int(td["shares_yes"]),
+                    shares_no=int(td["shares_no"]),
                     raw_cost=float(td["raw_cost"]),
                     fee=float(td["fee"]),
                     effective_cost=float(td["effective_cost"]),
@@ -914,18 +1001,75 @@ class LMSRMarketSimulator:
                     timestamp=datetime.fromisoformat(pd["timestamp"]),
                 ))
 
-            # scores
+            # scores (may be stubs with None outcome/brier/log, or filled)
             for sd in md.get("scores", []):
                 market.scores.append(Score(
                     market_id=mid,
                     user_id=sd["user_id"],
                     trade_id=sd["trade_id"],
                     forecast_prob=float(sd["forecast_prob"]),
-                    outcome=float(sd.get("outcome", 0)),
-                    brier_score=float(sd.get("brier_score", 0)),
-                    log_score=float(sd.get("log_score", 0)),
+                    outcome=float(sd.get("outcome")) if sd.get("outcome") is not None else None,
+                    brier_score=float(sd.get("brier_score")) if sd.get("brier_score") is not None else None,
+                    log_score=float(sd.get("log_score")) if sd.get("log_score") is not None else None,
                     timestamp=datetime.fromisoformat(sd["timestamp"]),
                 ))
+
+        if db_path and sim._db:
+            # Persist the loaded in-memory data to the target DB (so inspect etc see it)
+            for uid, u in sim.users.items():
+                sim._db.get_or_create_user(uid, u.display_name, u.balance, commit=False)
+            for mid, mkt in sim.markets.items():
+                sim._db.save_market(
+                    id=mid,
+                    title=mkt.title,
+                    description=mkt.description,
+                    resolution_criteria=mkt.resolution_criteria,
+                    b=mkt.b,
+                    fee_rate=mkt.fee_rate,
+                    initial_subsidy=mkt.initial_subsidy,
+                    status=mkt.status,
+                    created_at=mkt.created_at.isoformat() if mkt.created_at else None,
+                    close_at=mkt.close_at.isoformat() if mkt.close_at else None,
+                    resolved_at=mkt.resolved_at.isoformat() if mkt.resolved_at else None,
+                    resolution_outcome=mkt.resolution_outcome,
+                    commit=False,
+                )
+                for t in mkt.trades:
+                    sim._db.save_trade({
+                        "id": t.id,
+                        "market_id": mid,
+                        "user_id": t.user_id,
+                        "shares_yes": t.shares_yes,
+                        "shares_no": t.shares_no,
+                        "raw_cost": t.raw_cost,
+                        "fee": t.fee,
+                        "effective_cost": t.effective_cost,
+                        "price_after_yes": t.price_after_yes,
+                        "price_after_no": t.price_after_no,
+                        "q_after_yes": t.market_q_after[0],
+                        "q_after_no": t.market_q_after[1],
+                        "created_at": t.timestamp.isoformat(),
+                    }, commit=False)
+                for p in mkt.payouts:
+                    sim._db.save_payout({
+                        "market_id": mid,
+                        "user_id": p.user_id,
+                        "amount": p.amount,
+                        "outcome": p.outcome,
+                        "created_at": p.timestamp.isoformat(),
+                    }, commit=False)
+                for s in mkt.scores:
+                    sim._db.save_score({
+                        "market_id": mid,
+                        "user_id": s.user_id,
+                        "trade_id": s.trade_id,
+                        "forecast_prob": s.forecast_prob,
+                        "outcome": s.outcome,
+                        "brier_score": s.brier_score,
+                        "log_score": s.log_score,
+                        "created_at": s.timestamp.isoformat(),
+                    }, commit=False)
+            sim._db.conn.commit()
 
         return sim
 
@@ -937,12 +1081,12 @@ class LMSRMarketSimulator:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
 
     @classmethod
-    def load_json(cls, filepath: str | Path, db_path: str | Path | None = None) -> "LMSRMarketSimulator":
+    def load_json(cls, filepath: str | Path, db_path: str | Path | None = None) -> LMSRMarketSimulator:
         """Load from JSON file."""
         path = Path(filepath)
         if not path.exists():
             raise FileNotFoundError(f"No JSON state found at {path}")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data, db_path=db_path)
 
@@ -960,7 +1104,17 @@ class LMSRMarketSimulator:
         """
         Place a trade in a specific market.
 
-        Handles balance checks and updates (as specified in DESIGN.md).
+        Implements the trade flow from DESIGN.md §5 "Core Operations" / "Trade Flow (Atomic in a real DB)":
+            1. (implicit lock via tx)
+            2. Compute cost via engine.quote
+            3. Balance + position checks (non-negative holdings)
+            4. Execute via engine.trade (updates q + user_positions guard + revenue)
+            5. Append immutable Trade (with denormalized price_after + q_after)
+            6. Adjust user balance
+            7. Insert stub Score row (forecast only; filled at resolution)
+
+        The DB transaction (when db_path is set) covers trade + balance update + score stub
+        for atomicity, matching the spec as closely as a SQLite prototype can.
         """
         market = self.get_market(market_id)
 
@@ -969,6 +1123,21 @@ class LMSRMarketSimulator:
                 "error": f"Cannot trade on a {market.status} market",
                 "market_status": market.status,
             }
+
+        # Enforce integer shares early (engine will also enforce, but nice error here)
+        try:
+            sy = int(shares_yes)
+            sn = int(shares_no)
+            if float(shares_yes) != sy or float(shares_no) != sn:
+                return {
+                    "error": "Fractional shares are not allowed. shares_yes and shares_no must be whole numbers.",
+                }
+        except (ValueError, TypeError):
+            return {
+                "error": "shares_yes and shares_no must be integers (no fractional shares).",
+            }
+
+        shares_yes, shares_no = sy, sn
 
         # Prevent no-op trades
         if shares_yes == 0 and shares_no == 0:
@@ -1023,7 +1192,27 @@ class LMSRMarketSimulator:
         if market_id in self._positions_cache:
             self._positions_cache[market_id] = {}
 
-        # Persist to DB (trade record + updated user balance) with transaction
+        # Stub Score row at trade time (DESIGN.md §5 "Trade Flow" step 7):
+        # "Insert stub `Score` row (scores filled at resolution)."
+        # We record the forecast_prob = price_after_yes (the trader's revealed
+        # belief at the moment of the trade). The outcome/brier/log are filled
+        # later in _compute_and_store_scores during resolve_market.
+        forecast = p_yes
+        stub = Score(
+            market_id=market_id,
+            user_id=user_id,
+            trade_id=trade_id,
+            forecast_prob=forecast,
+            outcome=None,
+            brier_score=None,
+            log_score=None,
+            timestamp=trade.timestamp,
+        )
+        market.scores.append(stub)
+
+        # Persist to DB (trade record + updated user balance + score stub)
+        # inside a single transaction for atomicity (DESIGN.md trade flow).
+        # Matches the "Atomic in a real DB" requirement as closely as SQLite allows.
         if self._db:
             conn = self._db.conn
             conn.execute("BEGIN IMMEDIATE")
@@ -1046,6 +1235,17 @@ class LMSRMarketSimulator:
                 # persist the balance change
                 new_balance = self.get_balance(user_id)
                 self._db.update_user_balance(user_id, new_balance, commit=False)
+                # persist the score *stub* (forecast only; rest filled on resolve)
+                self._db.save_score({
+                    "market_id": market_id,
+                    "user_id": user_id,
+                    "trade_id": trade_id,
+                    "forecast_prob": forecast,
+                    "outcome": None,
+                    "brier_score": None,
+                    "log_score": None,
+                    "created_at": trade.timestamp.isoformat(),
+                }, commit=False)
                 conn.commit()
             except Exception:
                 conn.rollback()
@@ -1110,12 +1310,17 @@ class LMSRMarketSimulator:
         """
         Resolve a market to 'yes' or 'no'.
 
-        Delegates the main responsibilities to focused private methods:
-        - Creating payouts + crediting balances
-        - Computing and storing calibration scores
-        - Running accounting identity checks
+        Implements DESIGN.md §5 "Resolution":
+        - Payouts for winning-side holders + balance credits
+        - Fill previously-inserted Score *stubs* (from trade time) with
+          outcome + Brier/Log (using the historical forecast_prob from each Trade)
+        - Automatic accounting identity check (the critical invariant from
+          DESIGN.md: total_payouts_recorded == engine.q[winning], plus remainder)
+        - Market status updated to resolved
 
-        This keeps resolve_market as a clear orchestrator.
+        When a db_path is configured, the entire resolution (payouts +
+        balance updates + score fills + status) runs inside one BEGIN
+        IMMEDIATE transaction with rollback on any failure.
         """
         market = self.get_market(market_id)
         if market.status != "open":
