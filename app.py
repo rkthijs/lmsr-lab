@@ -105,7 +105,11 @@ if not st.session_state.demo_initialized:
         # Add one market using adaptive b so we can demonstrate the concept live.
         # Seeded with many small, mixed trades so the price starts at a
         # reasonable level (~0.72) while b has already grown from the floor.
-        adaptive_b = BoundedB(LinearVolumeB(alpha=0.07, min_b=10), min_b=10, max_b=300)
+        #
+        # alpha=0.10 chosen using the b-recommendation tool (see the 🧮 expander):
+        # for rec_b around 200-300 and volume proxy ~2000-3000, suggested alpha ≈ rec_b / total ≈ 0.08–0.15.
+        # We use 0.10 (slightly conservative growth) + Bounded for safety.
+        adaptive_b = BoundedB(LinearVolumeB(alpha=0.10, min_b=10), min_b=10, max_b=300)
         adaptive_market = sim.create_market(
             title="Will the new product launch on time? (Adaptive b)",
             b=adaptive_b,
@@ -134,6 +138,44 @@ if _HAS_FASTAPI:
     import src.lmsr.api as api_mod
     api_mod._sim = sim
 
+def _render_account_summary(user_id: str, compact: bool = False):
+    """Render the three values every user cares about: cash balance, position value (MTM),
+    and total account value. Call this from sidebar + multiple tabs so the numbers are
+    always readily visible without digging.
+    """
+    if api_client is None:
+        cash = pos_val = total = 1000.0
+    else:
+        try:
+            acct = api_client.get(f"/users/{user_id}/account").json()
+            cash = float(acct.get("cash_balance", 0.0))
+            pos_val = float(acct.get("position_value", 0.0))
+            total = float(acct.get("total_value", cash + pos_val))
+        except Exception:
+            cash = pos_val = total = 0.0
+
+    label_cash = "💵 Cash Balance"
+    label_pos = "📊 Position Value (MTM)"
+    label_tot = "💰 Total Account Value"
+
+    help_text = (
+        "Cash you hold + current market value of the shares you own "
+        "across all markets. Total = Cash + Position Value."
+    )
+
+    if compact:
+        # Compact vertical stack suitable for sidebar
+        st.metric(label_cash, f"{cash:,.2f}")
+        st.metric(label_pos, f"{pos_val:,.2f}", help="Mark-to-market value of your current Yes/No holdings")
+        st.metric(label_tot, f"{total:,.2f}", help=help_text, delta=f"Pos {pos_val:+.2f}")
+    else:
+        # Nice 3-column layout for main content / portfolio tab
+        c1, c2, c3 = st.columns(3)
+        c1.metric(label_cash, f"{cash:,.2f}")
+        c2.metric(label_pos, f"{pos_val:,.2f}", help="Current market value of your share positions")
+        c3.metric(label_tot, f"{total:,.2f}", help=help_text)
+
+
 # =====================
 # SIDEBAR
 # =====================
@@ -143,11 +185,8 @@ with st.sidebar:
     user_id = st.text_input("User ID", value=st.session_state.user_id)
     st.session_state.user_id = user_id
 
-    if api_client is not None:
-        balance = api_client.get(f"/users/{user_id}/balance").json()["balance"]
-    else:
-        balance = 1000.0  # fallback when API extra not installed
-    st.metric("Your Balance", f"{balance:,.2f}")
+    # Prominent always-visible account overview (the three values users care about)
+    _render_account_summary(user_id, compact=True)
 
     st.divider()
     st.header("Markets")
@@ -265,9 +304,9 @@ def _show_trade_confirmation_dialog(active_id, user_id, sy, sn, cost, raw_cost, 
 
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Yes Shares", f"{abs(sy):.1f}", delta=f"{direction_yes} Yes" if sy != 0 else None)
+        st.metric("Yes Shares", f"{abs(sy):.0f}", delta=f"{direction_yes} Yes" if sy != 0 else None)
     with col2:
-        st.metric("No Shares", f"{abs(sn):.1f}", delta=f"{direction_no} No" if sn != 0 else None)
+        st.metric("No Shares", f"{abs(sn):.0f}", delta=f"{direction_no} No" if sn != 0 else None)
 
     st.divider()
 
@@ -276,11 +315,11 @@ def _show_trade_confirmation_dialog(active_id, user_id, sy, sn, cost, raw_cost, 
     else:
         st.metric("Estimated Proceeds", f"{-cost:,.2f}")
 
-    st.write(f"**Current Position:** Yes {current_pos[0]:.1f} | No {current_pos[1]:.1f}")
+    st.write(f"**Current Position:** Yes {int(current_pos[0]):.0f} | No {int(current_pos[1]):.0f}")
 
     new_yes = current_pos[0] + sy
     new_no = current_pos[1] + sn
-    st.write(f"**Position After Trade:** Yes {new_yes:.1f} | No {new_no:.1f}")
+    st.write(f"**Position After Trade:** Yes {int(new_yes):.0f} | No {int(new_no):.0f}")
 
     st.divider()
 
@@ -532,12 +571,11 @@ def _render_portfolio_tab(user_id):
     st.header(f"Portfolio for {user_id}")
     st.caption("See your positions, balance, and realized performance across all markets.")
 
-    # Primary data via API
-    port_resp = api_client.get(f"/users/{user_id}/portfolio").json()
-    bal_resp = api_client.get(f"/users/{user_id}/balance").json()
+    # Always-visible three key values at the top of the portfolio view
+    _render_account_summary(user_id, compact=False)
 
-    balance = port_resp.get("balance", bal_resp.get("balance", 0.0))
-    st.metric("Current Balance", f"{balance:,.2f}")
+    # Primary data via API (now includes position_value + total_value on the portfolio + per-pos value)
+    port_resp = api_client.get(f"/users/{user_id}/portfolio").json()
     st.metric("Total Payouts Received", f"{port_resp.get('total_payouts_received', 0):,.2f}")
     st.metric("Realized PnL (from resolutions)", f"{port_resp.get('realized_pnl', 0):,.2f}")
 
@@ -556,13 +594,16 @@ def _render_portfolio_tab(user_id):
     if positions:
         pos_rows = []
         for mid, pos in positions.items():
-            pos_rows.append({
+            row = {
                 "Market": id_to_title.get(mid, mid),
                 "Status": id_to_status.get(mid, "?"),
-                "Yes": pos.get("yes", 0),
-                "No": pos.get("no", 0),
-                "Total Exposure": pos.get("total", 0),
-            })
+                "Yes": f"{pos.get('yes', 0):.0f}",
+                "No": f"{pos.get('no', 0):.0f}",
+                "Total Exposure": f"{pos.get('total', 0):.0f}",
+            }
+            if "value" in pos:
+                row["Current Value (MTM)"] = f"{pos['value']:.2f}"
+            pos_rows.append(row)
         st.dataframe(pos_rows, width="stretch", hide_index=True)
     else:
         st.info("You have not traded in any markets yet.")
@@ -577,7 +618,7 @@ def _render_portfolio_tab(user_id):
                 {
                     "Market": sim.get_market(p.market_id).title,
                     "Outcome": p.outcome.upper(),
-                    "Amount Received": p.amount,
+                    "Amount Received": f"{p.amount:,.2f}",
                     "Date": p.timestamp.strftime("%Y-%m-%d %H:%M"),
                 }
                 for p in user_payouts
@@ -646,6 +687,9 @@ with tab_trade:
     if market.get("resolution_criteria"):
         st.caption(f"**Resolution Criteria:** {market['resolution_criteria']}")
 
+    # The three values, always visible while you are in the Trade tab looking at a market
+    _render_account_summary(user_id, compact=False)
+
     # Prominent callout for adaptive b markets (very useful for the soft demo)
     if market.get("is_adaptive"):
         st.info(
@@ -683,26 +727,32 @@ with tab_trade:
 
     if market.get("status") == "open":
         st.subheader("Place Trade")
-        st.caption("Enter positive numbers to buy shares, negative to sell. You can trade both sides in one transaction.")
+        st.caption("Enter whole numbers of shares (no fractions). Positive = buy, negative = sell. You can trade both sides in one transaction.")
 
         # Side-by-side inputs so they don't take full width
         yes_col, no_col = st.columns(2)
         with yes_col:
             sy = st.number_input(
                 "Yes shares",
-                value=0.0,
-                step=1.0,
+                value=0,
+                step=1,
+                format="%d",
                 key=f"sy_{active_id}",
-                help="Positive = buy Yes, Negative = sell Yes"
+                help="Positive = buy Yes, Negative = sell Yes. Only whole shares allowed."
             )
         with no_col:
             sn = st.number_input(
                 "No shares",
-                value=0.0,
-                step=1.0,
+                value=0,
+                step=1,
+                format="%d",
                 key=f"sn_{active_id}",
-                help="Positive = buy No, Negative = sell No"
+                help="Positive = buy No, Negative = sell No. Only whole shares allowed."
             )
+
+        # Enforce whole shares (UI + backend both reject fractions)
+        sy = int(sy)
+        sn = int(sn)
 
         # Accurate preview using the dedicated /quote endpoint (pure, no user needed)
         q = api_client.get(
@@ -775,7 +825,7 @@ with tab_trade:
     # User-specific position always via API observe for consistency with TradingAgent / bots
     obs_here = api_client.get(f"/markets/{active_id}/observe", params={"user_id": user_id}).json()
     your_pos = [obs_here["position"]["yes"], obs_here["position"]["no"]]
-    st.write(f"**You** — Yes: {your_pos[0]:.1f} | No: {your_pos[1]:.1f}")
+    st.write(f"**You** — Yes: {int(your_pos[0]):.0f} | No: {int(your_pos[1]):.0f}")
 
     # Cross-user positions table (demo visibility of market state).
     # Now driven purely from the already-fetched /trades response + per-user /observe calls
@@ -791,12 +841,12 @@ with tab_trade:
         try:
             o = api_client.get(f"/markets/{active_id}/observe", params={"user_id": uid}).json()
             p = o.get("position", {})
-            pos_data.append({"User": uid, "Yes": round(p.get("yes", 0), 1), "No": round(p.get("no", 0), 1)})
+            pos_data.append({"User": uid, "Yes": int(p.get("yes", 0)), "No": int(p.get("no", 0))})
         except Exception:
             pass
     if not pos_data and (your_pos[0] or your_pos[1]):
         # Fallback for the current user only (should be rare)
-        pos_data.append({"User": user_id, "Yes": round(your_pos[0], 1), "No": round(your_pos[1], 1)})
+        pos_data.append({"User": user_id, "Yes": int(your_pos[0]), "No": int(your_pos[1])})
 
     if pos_data:
         st.dataframe(pos_data, width="stretch", hide_index=True)
@@ -816,14 +866,14 @@ with tab_trade:
                 res = _safe_api(f"/markets/{active_id}/resolve", method="POST", json={"outcome": "yes"})
                 if "error" not in res:
                     mm_pl = res.get("market_maker_pl", res.get("pl", 0.0))
-                    st.success(f"Resolved to Yes. MM P/L: {mm_pl:.4f}")
+                    st.success(f"Resolved to Yes. MM P/L: {mm_pl:.2f}")
                 st.rerun()
         with c2:
             if st.button("Resolve to No", type="secondary"):
                 res = _safe_api(f"/markets/{active_id}/resolve", method="POST", json={"outcome": "no"})
                 if "error" not in res:
                     mm_pl = res.get("market_maker_pl", res.get("pl", 0.0))
-                    st.success(f"Resolved to No. MM P/L: {mm_pl:.4f}")
+                    st.success(f"Resolved to No. MM P/L: {mm_pl:.2f}")
                 st.rerun()
     else:
         st.subheader("Resolution & Stored Scores")
@@ -833,7 +883,7 @@ with tab_trade:
             mkt_res = sim.get_market(active_id)
             eng = mkt_res.engine
             payout_sum = sum(p.amount for p in mkt_res.payouts)
-            st.metric("Market Maker Final P/L", f"{eng.total_revenue - payout_sum:.4f}")
+            st.metric("Market Maker Final P/L", f"{eng.total_revenue - payout_sum:.2f}")
             st.caption(f"Total fees/spread earned: {eng.total_fees_earned:,.2f}")
         except Exception:
             st.caption("Resolution details available via simulator for this demo view.")

@@ -26,6 +26,8 @@ Example programmatic usage:
     )
 
     # Run one market with believers who have noisy beliefs around true_p=0.7
+    # b=50 chosen as a "medium liquidity" value using the b-recommendation tool
+    # (subsidy≈500, typical_size=40, desired_move≈8% → rec_b around 40-70 range).
     scores = simulate_belief_market(
         true_p=0.7,
         num_traders=40,
@@ -191,6 +193,8 @@ def compare_fixed_vs_adaptive(
         }
 
     # Adaptive (using Bounded + Linear for safety)
+    # Alphas chosen around the recommendation tool's suggested_alpha = rec_b / total_volume
+    # for a few-thousand-share market (see app.py b explorer). Lower alphas = slower b growth.
     for alpha in adaptive_alphas:
         strat = BoundedB(LinearVolumeB(alpha=alpha, min_b=8), min_b=8, max_b=300)
         res = simulate_belief_market(true_p=true_p, num_traders=num_traders, b=strat, seed=seed)
@@ -224,6 +228,8 @@ def main() -> None:
     print("=== LMSR Experiments Demo ===\n")
 
     # 1. Quick single run
+    # b=40 picked via recommendation tool defaults (smallish subsidy + moderate bet size
+    # and desired price impact to keep the demo responsive while still realistic).
     print("1. Single belief-market simulation (fixed b=40)")
     scores = simulate_belief_market(true_p=0.68, num_traders=20, b=40.0, trades_per_trader=2)
     print(f"   mean_brier={scores['mean_brier']:.4f}  mean_log={scores['mean_log_score']:.4f}")

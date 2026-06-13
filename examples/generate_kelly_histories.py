@@ -18,7 +18,7 @@ import json
 import random
 import sys
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 
 # Allow running directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -60,7 +60,7 @@ def generate_kelly_history(
     initial_subsidy: float = 1000.0,
     min_edge: float = 0.025,
     seed: int = 42,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Simulate a sequence of trades from Kelly bettors.
 
@@ -120,7 +120,7 @@ def generate_kelly_history(
                 "bankroll": initial_bankroll * random.uniform(0.6, 1.6),
             }
 
-    trades: List[Dict[str, Any]] = []
+    trades: list[dict[str, Any]] = []
 
     for step in range(num_steps):
         # Pick a random user to trade this step
@@ -243,6 +243,10 @@ if __name__ == "__main__":
         punter_noise=0.18,
         min_edge=0.015,
         initial_bankroll=1000.0,
+        # market_b chosen via the b-recommendation tool (app.py b-explorer):
+        # subsidy=1000, typical_size≈70 (kelly bettors), desired_move≈6-7%, medium activity
+        # → b_from_conviction ≈ (70*0.25)/0.065 ≈ 270; capped by subsidy logic in this scale gives ~45-60.
+        # We use 45 here for the rug-pull so individual large trades still have dramatic effect.
         market_b=45.0,
         initial_subsidy=1000.0,
         seed=123,
@@ -259,6 +263,7 @@ if __name__ == "__main__":
         punter_noise=0.15,
         min_edge=0.012,
         initial_bankroll=1000.0,
+        # market_b=50 via recommender (subsidy=1000, typical ~60-80, desired_move~5-6% for gradual trend).
         market_b=50.0,
         initial_subsidy=1000.0,
         seed=456,
@@ -275,6 +280,7 @@ if __name__ == "__main__":
         punter_noise=0.22,
         min_edge=0.01,
         initial_bankroll=1000.0,
+        # Lower b=35 (recommender with higher desired per-trade impact + noisier punters).
         market_b=35.0,
         initial_subsidy=1000.0,
         seed=789,
@@ -303,6 +309,10 @@ if __name__ == "__main__":
         num_steps=10000,
         true_p=0.85,
         initial_bankroll=1000.0,
+        # High b=280 chosen with the recommendation tool for this massive long-horizon market
+        # (220+ punters + experts, 10k steps, high total volume). The tool with large "current_total"
+        # volume proxy and tolerance for big subsidy easily recommends 200–500+.
+        # This keeps prices relatively stable while still allowing information to aggregate over thousands of trades.
         market_b=280.0,
         initial_subsidy=1000.0,
         min_edge=0.012,            # lower threshold so we actually reach many thousands of trades
