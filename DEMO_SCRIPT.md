@@ -92,8 +92,8 @@ streamlit run app.py
 
 If something goes wrong or the audience wants something different:
 
-- **Rug Pull Demo**: Load "Kelly Rug Pull (Resolved)" and walk through the price movement + final resolution.
-- **Experts vs Punters**: Good for showing high-b behavior and slow information aggregation.
+- **Rug Pull / High-Activity / Experts examples**: Load the "Full Teaching Demo (Multi-Market)" (the main consolidated non-bot scenario). It now includes a resolved rug-pull, open high-activity Kelly market, experts-vs-punters (high b), long trends, etc. Use the market selector or Admin tab "All Markets" list to drill into specific ones (e.g. the rug-pull market for resolution walkthrough, or the high-b one for slow aggregation).
+- The separate "Long Bot Activity Demo (300 rounds, Open)" is the dedicated unresolved bot demo (whale/punter/expert users).
 - **Create Market Live**: If they want to see trading in real time, create a new market and do a few manual trades.
 
 ---

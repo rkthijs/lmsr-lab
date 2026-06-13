@@ -76,6 +76,14 @@ def seed_long_bot_demo(sim: LMSRMarketSimulator) -> str:
         fee_rate=0.015,
     )
 
+    # Defensive: ensure the market is registered in the simulator (in case of
+    # internal state issues after reset in the pro UI load_scenario path).
+    # This mirrors the hack in load_history_into_simulator and prevents
+    # spurious "Market 'mX' does not exist" during the 300 rounds of bot trades.
+    if market.id not in sim.markets:
+        sim.markets[market.id] = market
+        sim._positions_cache[market.id] = {}
+
     bots = [
         # Boost random to do more (higher probability and size for visible activity)
         # User names chosen to overlap with those appearing in the Kelly-based

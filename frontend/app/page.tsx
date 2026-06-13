@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Leaderboard from './components/Leaderboard';
 import MarketCard from './components/MarketCard';
 import MarketModal from './components/MarketModal';
@@ -58,6 +58,38 @@ export default function LMSRProfessionalUI() {
       setResolveMarketId('');
     }
   }, [openMarkets]);
+
+  // Local UI sorting state for the "All Users" table in Admin view (not persisted in hook)
+  const [usersSort, setUsersSort] = useState<{ key: 'user_id' | 'balance' | 'open_markets' | 'resolved_markets'; dir: 'asc' | 'desc' }>({ key: 'balance', dir: 'desc' });
+
+  const toggleUsersSort = (key: typeof usersSort.key) => {
+    setUsersSort(prev =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: key === 'user_id' ? 'asc' : 'desc' }
+    );
+  };
+
+  const sortedUsers = [...users].sort((a, b) => {
+    const getVal = (u: any, k: string): number | string => {
+      if (k === 'user_id') return u.user_id;
+      if (k === 'balance') return u.balance ?? 0;
+      if (k === 'open_markets') return u.open_markets ?? 0;
+      if (k === 'resolved_markets') return u.resolved_markets ?? 0;
+      return 0;
+    };
+    const va = getVal(a, usersSort.key);
+    const vb = getVal(b, usersSort.key);
+    if (typeof va === 'string' && typeof vb === 'string') {
+      return usersSort.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    }
+    const na = Number(va);
+    const nb = Number(vb);
+    return usersSort.dir === 'asc' ? na - nb : nb - na;
+  });
+
+  const usersSortIndicator = (key: typeof usersSort.key) =>
+    usersSort.key === key ? (usersSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50">
@@ -223,7 +255,7 @@ export default function LMSRProfessionalUI() {
                   ))
                 )}
                 {openMarkets.length === 0 && !isLoadingMarkets && (
-                  <div className="text-zinc-400 col-span-full">No active markets. Load a demo scenario (e.g. Full Teaching or 300-round) in the Admin tab.</div>
+                  <div className="text-zinc-400 col-span-full">No active markets. Load a demo scenario (e.g. Full Teaching, Deep Single Active, or 300-round bot) in the Admin tab.</div>
                 )}
                 {openMarkets.map(m => {
                   const myPos = userPositions[m.id] || { yes: 0, no: 0 };
@@ -247,45 +279,56 @@ export default function LMSRProfessionalUI() {
               </div>
             </div>
 
-            {/* Past / Resolved Markets */}
-            <div className="mt-10">
-              <h2 className="text-xl font-semibold mb-3">Past Markets</h2>
-              <p className="text-sm text-zinc-400 mb-4">
-                Resolved markets from loaded demo scenarios. Click any card to open the full Market View (price history, trades, your outcome at resolution).
-                Your realized PnL and payouts for these are reflected in the Portfolio section above.
-              </p>
-              <div className="grid gap-4 md:grid-cols-2">
-                {isLoadingMarkets && resolvedMarkets.length === 0 && (
-                  Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="border border-zinc-800 bg-zinc-900 rounded-2xl p-4 space-y-3">
-                      <div className="h-5 w-3/4 bg-zinc-800 animate-pulse rounded" />
-                      <div className="h-4 w-1/2 bg-zinc-800 animate-pulse rounded" />
-                      <div className="h-3 w-full bg-zinc-800 animate-pulse rounded" />
-                    </div>
-                  ))
-                )}
-                {resolvedMarkets.length === 0 && !isLoadingMarkets && (
-                  <div className="text-zinc-400 col-span-full">No resolved markets yet. Load the "Full Teaching Demo (Multi-Market)" in the Admin tab to see examples.</div>
-                )}
-                {resolvedMarkets.map(m => {
-                  const myPos = userPositions[m.id] || { yes: 0, no: 0 };
+            {/* Past / Resolved Markets (default: only those where this user was active) */}
+            {(() => {
+              const userActivePastMarkets = resolvedMarkets.filter(m => {
+                const p = userPositions[m.id] || { yes: 0, no: 0 };
+                return p.yes > 0 || p.no > 0;
+              });
+              return (
+                <div className="mt-10">
+                  <h2 className="text-xl font-semibold mb-3">Past Markets</h2>
+                  <p className="text-sm text-zinc-400 mb-4">
+                    Resolved markets from loaded demo scenarios where you held an active position (had Yes or No shares at resolution). Click any card to open the full Market View (price history, trades, your outcome at resolution).
+                    Your realized PnL and payouts for these are reflected in the Portfolio section above.
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {isLoadingMarkets && resolvedMarkets.length === 0 && (
+                      Array.from({ length: 2 }).map((_, i) => (
+                        <div key={i} className="border border-zinc-800 bg-zinc-900 rounded-2xl p-4 space-y-3">
+                          <div className="h-5 w-3/4 bg-zinc-800 animate-pulse rounded" />
+                          <div className="h-4 w-1/2 bg-zinc-800 animate-pulse rounded" />
+                          <div className="h-3 w-full bg-zinc-800 animate-pulse rounded" />
+                        </div>
+                      ))
+                    )}
+                    {userActivePastMarkets.length === 0 && resolvedMarkets.length === 0 && !isLoadingMarkets && (
+                      <div className="text-zinc-400 col-span-full">No resolved markets yet. Load the "Full Teaching Demo (Multi-Market)" or "Deep Single Active Market (Open)" in the Admin tab to see examples.</div>
+                    )}
+                    {userActivePastMarkets.length === 0 && resolvedMarkets.length > 0 && !isLoadingMarkets && (
+                      <div className="text-zinc-400 col-span-full">You have no active positions in any past markets. Trade in open markets from a demo scenario (so they appear here after resolution).</div>
+                    )}
+                    {userActivePastMarkets.map(m => {
+                      const myPos = userPositions[m.id] || { yes: 0, no: 0 };
 
-                  return (
-                    <MarketCard
-                      key={m.id}
-                      market={m}
-                      myPos={myPos}
-                      isActive={false}
-                      amountYes={0}
-                      amountNo={0}
-                      onSetAmount={() => {}}
-                      onTrade={() => {}}
-                      onOpenDetail={() => openMarketView(m.id)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
+                      return (
+                        <MarketCard
+                          key={m.id}
+                          market={m}
+                          myPos={myPos}
+                          isActive={false}
+                          amountYes={0}
+                          amountNo={0}
+                          onSetAmount={() => {}}
+                          onTrade={() => {}}
+                          onOpenDetail={() => openMarketView(m.id)}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -378,14 +421,34 @@ export default function LMSRProfessionalUI() {
 
             <div>
               <h2 className="text-xl font-semibold mb-3">All Users</h2>
-              <div className="overflow-auto border border-zinc-800 rounded-2xl">
+              <div className="overflow-auto border border-zinc-800 rounded-2xl max-h-[300px]">
                 <table className="w-full text-sm">
-                  <thead className="bg-zinc-900">
+                  <thead className="bg-zinc-900 sticky top-0">
                     <tr>
-                      <th className="text-left p-4">User</th>
-                      <th className="text-right p-4">Balance</th>
-                      <th className="text-right p-4">Open Markets</th>
-                      <th className="text-right p-4">Resolved</th>
+                      <th
+                        className="text-left p-4 cursor-pointer hover:bg-zinc-800 select-none"
+                        onClick={() => toggleUsersSort('user_id')}
+                      >
+                        User{usersSortIndicator('user_id')}
+                      </th>
+                      <th
+                        className="text-right p-4 cursor-pointer hover:bg-zinc-800 select-none"
+                        onClick={() => toggleUsersSort('balance')}
+                      >
+                        Balance{usersSortIndicator('balance')}
+                      </th>
+                      <th
+                        className="text-right p-4 cursor-pointer hover:bg-zinc-800 select-none"
+                        onClick={() => toggleUsersSort('open_markets')}
+                      >
+                        Open Markets{usersSortIndicator('open_markets')}
+                      </th>
+                      <th
+                        className="text-right p-4 cursor-pointer hover:bg-zinc-800 select-none"
+                        onClick={() => toggleUsersSort('resolved_markets')}
+                      >
+                        Resolved{usersSortIndicator('resolved_markets')}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -397,7 +460,7 @@ export default function LMSRProfessionalUI() {
                         <td className="p-4 text-right"><div className="h-4 w-8 bg-zinc-800 animate-pulse rounded ml-auto" /></td>
                       </tr>
                     ))}
-                    {users.map(u => (
+                    {sortedUsers.map(u => (
                       <tr key={u.user_id} className="border-t border-zinc-800 hover:bg-zinc-900/50">
                         <td className="p-4 font-medium">{u.user_id}</td>
                         <td className="p-4 text-right tabular-nums">{u.balance?.toFixed(2)}</td>

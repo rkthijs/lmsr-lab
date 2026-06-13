@@ -19,9 +19,10 @@
 #     (cash, position value/MTM, total equity, their portfolio, per-market positions, and trade as them).
 #   - Switch to the Admin tab:
 #     • See global activity across all users/markets and resolve any market.
-#     • "Demo Scenarios" panel: load ANY of the curated demos that the Streamlit app offers
-#       (Balanced, Rug Pull, High-Activity Kelly, Long Trend, Full Teaching multi-market, Experts vs Punters,
-#        or the default 300-round bot activity). "Load Selected Scenario" resets state + populates the DB.
+#     • "Demo Scenarios" panel: load the curated demos (the main "Full Teaching Demo (Multi-Market)"
+#       now merges balanced/rug-pull/high-activity/experts-vs-punters/long-trend/etc. into one rich
+#       multi-market state; the separate 300-round bot activity demo is also available).
+#       "Load Selected Scenario" resets state + populates the DB.
 #
 # Prerequisites:
 #   - Python + the project's .venv (created by `python -m venv .venv` if missing)

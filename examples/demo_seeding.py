@@ -10,14 +10,14 @@ Usage in app.py or notebooks:
 
     from examples.demo_seeding import (
         load_history_into_simulator,
-        seed_rug_pull_demo,
-        seed_kelly_high_activity,
-        seed_full_teaching_demo,
+        run_scenario,
+        get_available_scenarios,
     )
 
     sim = LMSRMarketSimulator()
-    market_id = seed_rug_pull_demo(sim)
-    # Now the sim has real trades, users, positions, etc.
+    # Recommended: load the comprehensive teaching demo (or the 300-round bot one)
+    mids = run_scenario(sim, "Full Teaching Demo (Multi-Market)")
+    # Now the sim has real trades, users, positions, multiple markets, etc.
 """
 
 from __future__ import annotations
@@ -114,6 +114,13 @@ def load_history_into_simulator(
 
 # ---------------------------------------------------------------------------
 # Curated high-quality demo scenarios
+#
+# NOTE: The individual single-market seed_* functions below are kept as
+# building blocks. The public "demo options" exposed via SCENARIO_REGISTRY
+# (and thus the UIs) have been consolidated:
+#   - "Full Teaching Demo (Multi-Market)" now contains (nearly) everything
+#     that is not the 300-round bot demo.
+#   - "Long Bot Activity Demo (300 rounds, Open)" remains separate.
 # ---------------------------------------------------------------------------
 
 def seed_balanced_demo(sim: LMSRMarketSimulator) -> str:
@@ -185,35 +192,62 @@ def seed_experts_vs_punters(sim: LMSRMarketSimulator) -> str:
     )
 
 
+def seed_deep_single_market_demo(sim: LMSRMarketSimulator) -> str:
+    """Single active (open) market with a deep/long trade history and rich price path.
+
+    Designed for exercising the Market View modal's time-series chart, many trades,
+    impact/slippage previews, portfolio effects, etc. Uses a high-volume, long-horizon
+    history so the chart has lots of data points.
+    """
+    return load_history_into_simulator(
+        sim,
+        "examples/trade_histories/experts_vs_punters_10000.json",
+        b=500.0,
+        market_title="Deep Single Active Market (Long Horizon, Open)",
+    )
+
+
 def seed_full_teaching_demo(sim: LMSRMarketSimulator) -> list[str]:
     """
-    Creates a rich multi-market state that shows off almost every feature:
+    Comprehensive multi-market "Full Teaching Demo" that merges almost all
+    non-bot curated scenarios into one rich state for demos, teaching, and
+    the professional UI.
 
-    - One resolved rug-pull market (with stored scores + payouts)
-    - One open high-activity market
-    - One resolved long-trend market
-    - Multiple users with different outcomes
+    Includes:
+    - Balanced trading (open, low-b price impact)
+    - Resolved rug-pull (scores, payouts, leaderboard, whale vs retail)
+    - Open high-activity Kelly noisy market (live trading + portfolios)
+    - Experts vs Punters (high b, long-horizon, calibrated experts + noisy punters)
+    - Resolved very long gradual trend (slow price discovery + resolution character)
+    - Multiple overlapping users across markets for realistic cross-market views.
+
+    This is the primary recommended demo load (replaces the old individual
+    single-market scenarios except for the 300-round bot demo).
 
     Returns the list of created market IDs.
     """
     mids = []
 
-    # 1. Resolved rug pull (shows scores, payouts, leaderboard)
-    mid1 = seed_rug_pull_demo(sim, resolved=True)
-    mids.append(mid1)
+    # 1. Balanced trading (open) — low b, clear price impact
+    mid = seed_balanced_demo(sim)
+    mids.append(mid)
 
-    # 2. Open noisy high-activity market (live trading + portfolio view)
-    mid2 = seed_kelly_high_activity(sim)
-    mids.append(mid2)
+    # 2. Resolved rug pull (scores, payouts, leaderboard demo)
+    mid = seed_rug_pull_demo(sim, resolved=True)
+    mids.append(mid)
 
-    # 3. Another resolved market with different character
-    mid3 = load_history_into_simulator(
-        sim,
-        "examples/trade_histories/kelly_long_trend.json",
-        market_title="Long Trend Market (Resolved)",
-    )
-    sim.resolve_market(mid3, "yes")
-    mids.append(mid3)
+    # 3. Open high-activity noisy Kelly market (live trading, user portfolios)
+    mid = seed_kelly_high_activity(sim)
+    mids.append(mid)
+
+    # 4. Experts vs Punters (high liquidity b, long horizon, p=0.85 truth)
+    mid = seed_experts_vs_punters(sim)
+    mids.append(mid)
+
+    # 5. Resolved very long gradual trend (different resolution behavior)
+    mid = seed_long_trend_demo(sim)
+    sim.resolve_market(mid, "yes")
+    mids.append(mid)
 
     return mids
 
@@ -223,13 +257,15 @@ def seed_full_teaching_demo(sim: LMSRMarketSimulator) -> list[str]:
 # ---------------------------------------------------------------------------
 
 SCENARIO_REGISTRY = {
-    "Balanced Trading (Open)": seed_balanced_demo,
-    "Kelly Rug Pull (Resolved)": seed_rug_pull_demo,
-    "Kelly High-Activity (Open)": seed_kelly_high_activity,
-    "Very Long Gradual Trend (Open)": seed_long_trend_demo,
+    # The primary comprehensive demo (now merges all non-bot scenarios: balanced,
+    # rug pull, high-activity, experts-vs-punters, long trend, etc. into one
+    # rich multi-market state with resolved + open markets and overlapping users).
     "Full Teaching Demo (Multi-Market)": seed_full_teaching_demo,
-    "Experts vs Punters (p=0.85, long horizon)": seed_experts_vs_punters,
+    # Separate 300-round unresolved bot demo (kept distinct per request).
     "Long Bot Activity Demo (300 rounds, Open)": seed_long_bot_demo,
+    # A standalone single active (open) market with deep/long activity and rich price history.
+    # Perfect for the Market View modal's time series, many trades, impact, and deep positions.
+    "Deep Single Active Market (Open)": seed_deep_single_market_demo,
 }
 
 

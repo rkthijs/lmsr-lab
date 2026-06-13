@@ -274,7 +274,7 @@ Open http://localhost:3000.
 
 - Use the top user dropdown to switch between the 300-round bot users (`bull`, `contrarian`, `bear` who buys No when price is high, boosted `random`, etc.) and see exactly what each one sees.
 - Switch to the Admin tab to see global activity across everyone and resolve markets.
-- In the Admin tab there is now a **Demo Scenarios** section at the top with a dropdown containing *every* curated demo from the Streamlit app (Balanced, Rug Pull, High-Activity, Long Trend, Full Teaching multi-market, Experts vs Punters, 300-round bots, ...). "Load Selected Scenario" (or "Reset (empty)") replaces the current DB state with that demo exactly as the Streamlit scenario buttons do.
+- In the Admin tab there is now a **Demo Scenarios** section at the top with a dropdown. The primary one is the comprehensive "Full Teaching Demo (Multi-Market)" (merges balanced trading, rug pull, high-activity, experts-vs-punters, long trends, etc. into one rich multi-market state). The separate "Long Bot Activity Demo (300 rounds, Open)" is also available. "Load Selected Scenario" (or "Reset (empty)") replaces the current DB state exactly as the Streamlit scenario buttons do.
 
 The script is the easiest on-ramp for collaborators. Everything uses the same persistent `lmsr_demo.db` as the rest of the project and has zero dependency on the Streamlit demo.
 
@@ -313,7 +313,7 @@ npm run dev
 Open http://localhost:3000.
 
 - Use the top user dropdown to switch between the 300-round bot users and see exactly what each one "sees".
-- Switch to the Admin tab to see all activity and resolve markets. The Admin tab also exposes the full set of demo scenarios (dropdown + Load) so every curated scenario from the Streamlit "Quick Demo Scenarios" is available here too.
+- Switch to the Admin tab to see all activity and resolve markets. The Admin tab also exposes the (now consolidated) demo scenarios (dropdown + Load): the main "Full Teaching Demo (Multi-Market)" plus the separate 300-round bot demo.
 - Backend must be on port 8000 (API docs at /docs).
 
 **Manual steps** (useful for development)
