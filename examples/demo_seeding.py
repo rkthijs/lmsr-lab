@@ -74,7 +74,7 @@ def load_history_into_simulator(
     # default 25 only as fallback for old histories; new ones (and calls above) use
     # values chosen via the b-recommendation tool for plausibility.
     effective_b = b if b is not None else params.get("b", 25.0)
-    effective_fee = fee_rate if fee_rate is not None else params.get("fee_rate", 0.02)
+    effective_fee = fee_rate if fee_rate is not None else params.get("fee_rate", 0.025)
     effective_subsidy = (
         initial_subsidy if initial_subsidy is not None else params.get("initial_subsidy", 0.0)
     )
@@ -88,6 +88,13 @@ def load_history_into_simulator(
         fee_rate=float(effective_fee),
         initial_subsidy=float(effective_subsidy),
     )
+
+    # Defensive: ensure the market is registered in the simulator (in case of
+    # internal state issues after reset in the pro UI). This prevents
+    # spurious "Market 'mX' does not exist" during replay.
+    if market.id not in sim.markets:
+        sim.markets[market.id] = market
+        sim._positions_cache[market.id] = {}
 
     # Replay every trade from the history using the real simulator API
     for trade in history.get("trades", []):

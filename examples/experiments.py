@@ -72,7 +72,7 @@ def simulate_belief_market(
     true_p: float = 0.7,
     num_traders: int = 30,
     b: float | Any = 40.0,
-    fee_rate: float = 0.02,
+    fee_rate: float = 0.025,
     trades_per_trader: int = 2,
     belief_noise: float = 0.12,
     seed: int | None = 42,

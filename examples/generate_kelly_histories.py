@@ -80,7 +80,7 @@ def generate_kelly_history(
     market = sim.create_market(
         title=name,
         b=market_b,
-        fee_rate=0.02,
+        fee_rate=0.025,
         initial_subsidy=initial_subsidy,
     )
 
@@ -213,7 +213,7 @@ def generate_kelly_history(
         "market_params": {
             "b": market_b,
             "initial_subsidy": initial_subsidy,
-            "fee_rate": 0.02,
+            "fee_rate": 0.025,
             "true_p": true_p,
         },
         "trades": trades,

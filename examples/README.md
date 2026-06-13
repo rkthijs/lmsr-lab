@@ -135,7 +135,7 @@ This is especially visible in `strong_early_conviction.json` and `late_buyers.js
 
 ## Tips
 
-- Set `fee_rate=0.0` when creating markets in your own scripts if you want cleaner price paths (the default simulator uses 2%).
+- Set `fee_rate=0.0` when creating markets in your own scripts if you want cleaner price paths (the default simulator uses 2.5%).
 - The `replay_history()` function returns raw data you can plot with matplotlib, pandas, etc.
 - You can extend the histories with selling (`negative` values) if you want to explore more complex scenarios.
 
@@ -225,7 +225,7 @@ All of them emphasize:
 - Using the b-recommendation tool (see the 🧮 expander in the Streamlit app) to choose plausible liquidity parameters instead of magic numbers.
 
 ### Using in the Streamlit UI
-The long 300-round bot demo is now available as a one-click scenario:
+The long 300-round bot demo is now available as a one-click scenario (users deliberately overlap with names from the Kelly histories used in Full Teaching / rug-pull etc. so that the "Viewing as" switcher and portfolio views feel richer when you explore multiple demos):
 - Run the app: `python -m streamlit run app.py`
 - In the sidebar, open "🚀 Quick Demo Scenarios"
 - Click **"Long Bot Activity Demo (300 rounds, Open)"**

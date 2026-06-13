@@ -114,7 +114,7 @@ class BinaryLMSRMarket:
         >>> m = BinaryLMSRMarket(b=LinearVolumeB(alpha=0.05, min_b=10))
     """
 
-    def __init__(self, b: BType = 10.0, fee_rate: float = 0.02):
+    def __init__(self, b: BType = 10.0, fee_rate: float = 0.025):
         """
         Create a new binary LMSR market.
 
@@ -128,7 +128,7 @@ class BinaryLMSRMarket:
               the liquidity to use at that moment. Enables dynamic liquidity
               rules (e.g. b growing with trading volume).
         fee_rate : float
-            Market-maker fee applied to every trade (default 2%).
+            Market-maker fee applied to every trade (default 2.5%).
         """
         self._b: BType = b
         self.fee_rate = float(fee_rate)

@@ -180,7 +180,7 @@ class Market:
     description: str = ""
     resolution_criteria: str = ""
     b: BType = 20.0
-    fee_rate: float = 0.02
+    fee_rate: float = 0.025
     initial_subsidy: float = 0.0  # Market maker's initial capital/subsidy for this market
     status: str = "open"          # "open", "closed", "resolved"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -233,13 +233,14 @@ class LMSRMarketSimulator:
         sim.place_trade(m1.id, "alice", 10, 0)
     """
 
-    def __init__(self, db_path: str | Path | None = None):
+    def __init__(self, db_path: str | Path | None = None, default_fee_rate: float = 0.025):
         self.markets: dict[str, Market] = {}
         self._next_market_id = 1
         # Per-market position caches
         self._positions_cache: dict[str, dict[str, np.ndarray]] = {}
         # Improved user model (replaces flat balance dict)
         self.users: dict[str, User] = {}
+        self.default_fee_rate: float = default_fee_rate
 
         # Optional durable storage (replaces pickle for the main app/demo use case)
         self.db_path: str | None = str(db_path) if db_path else None
@@ -281,7 +282,7 @@ class LMSRMarketSimulator:
                 description=mdata.get("description", ""),
                 resolution_criteria=mdata.get("resolution_criteria", ""),
                 b=b,
-                fee_rate=float(mdata.get("fee_rate", 0.02)),
+                fee_rate=float(mdata.get("fee_rate", 0.025)),
                 initial_subsidy=float(mdata.get("initial_subsidy", 0)),
                 status=mdata.get("status", "open"),
             )
@@ -393,7 +394,7 @@ class LMSRMarketSimulator:
         description: str = "",
         resolution_criteria: str = "",
         b: BType = 20.0,
-        fee_rate: float = 0.02,
+        fee_rate: float | None = None,
         initial_subsidy: float = 0.0,
         close_at: datetime | None = None,
     ) -> Market:
@@ -404,11 +405,17 @@ class LMSRMarketSimulator:
         callable that returns dynamic liquidity based on current shares
         (adaptive / liquidity-sensitive LMSR).
 
+        fee_rate defaults to the simulator's `default_fee_rate` (2.5% by default)
+        if not provided. This provides market-maker level configuration while
+        still allowing per-market overrides.
+
         Returns the created Market object (which contains its own engine).
         """
         market_id = f"m{self._next_market_id}"
         self._next_market_id += 1
 
+        if fee_rate is None:
+            fee_rate = self.default_fee_rate
         market = Market(
             id=market_id,
             title=title,
@@ -955,7 +962,7 @@ class LMSRMarketSimulator:
                 description=md.get("description", ""),
                 resolution_criteria=md.get("resolution_criteria", ""),
                 b=b,
-                fee_rate=float(md.get("fee_rate", 0.02)),
+                fee_rate=float(md.get("fee_rate", 0.025)),
                 initial_subsidy=float(md.get("initial_subsidy", 0)),
                 status=md.get("status", "open"),
             )

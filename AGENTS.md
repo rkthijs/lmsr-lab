@@ -16,7 +16,7 @@ Key properties implemented (per the spec):
 - LMSR cost function with log-sum-exp stability (`np.logaddexp`)
 - Configurable liquidity parameter `b`
 - Separate user position ledger (enforces non-negative holdings)
-- Built-in market-maker fee
+- Built-in market-maker fee (default 2.5%)
 - Instantaneous impact + slippage preview (critical for good UX)
 - Resolution with market-maker P/L and accounting identity
 - Play-money friendly (easy to add real balances later)
@@ -84,7 +84,7 @@ The UI lets you:
 import sys
 sys.path.insert(0, ".")
 from src.lmsr.market import BinaryLMSRMarket
-m = BinaryLMSRMarket(b=20, fee_rate=0.02)
+m = BinaryLMSRMarket(b=20, fee_rate=0.025)
 print("Prices:", m.price())
 m.trade("alice", 10, 0)
 print("After buy 10 Yes:", m.price())

@@ -78,22 +78,26 @@ def seed_long_bot_demo(sim: LMSRMarketSimulator) -> str:
 
     bots = [
         # Boost random to do more (higher probability and size for visible activity)
-        (TradingAgent(sim, "random", "Random"),
+        # User names chosen to overlap with those appearing in the Kelly-based
+        # histories (whale, punter_N, expert_N) used by Full Teaching Demo etc.
+        # This makes cross-market user switcher views much richer when different
+        # demo scenarios are loaded.
+        (TradingAgent(sim, "punter_1", "Random Punter (boosted)"),
          lambda a, m: random_trader(a, m, prob=0.45, max_size=5)),
-        (TradingAgent(sim, "thresh", "Threshold"), threshold_trader),
+        (TradingAgent(sim, "punter_4", "Threshold Punter"), threshold_trader),
         # Trend heavily nerfed so it doesn't dominate (high threshold, tiny size).
         # We want the informed bull + contrarian/mean-reversion to be the stars.
-        (TradingAgent(sim, "trend", "Trend Follower (light)"),
+        (TradingAgent(sim, "expert_1", "Trend Expert (light)"),
          lambda a, m: trend_follower(a, m, buy_above=0.92, size=1)),
         # Contrarian / Mean Reversion — seeded with initial long so it can
         # actively sell when the bull pushes price toward 0.8.
-        (TradingAgent(sim, "contrarian", "Contrarian / Mean Reversion"), mean_reversion),
-        (TradingAgent(sim, "bull", "Belief Bull (true≈0.82)"),
+        (TradingAgent(sim, "punter_5", "Contrarian / Mean Reversion"), mean_reversion),
+        (TradingAgent(sim, "whale", "Belief Bull (true≈0.82)"),
          lambda a, m: belief_trader(a, m, true_p=0.82, size=5, min_edge=0.05)),
-        (TradingAgent(sim, "bear", "Belief Bear (true≈0.30, buys No when p high)"),
+        (TradingAgent(sim, "punter_30", "Belief Bear (true≈0.30, buys No when p high)"),
          lambda a, m: belief_trader(a, m, true_p=0.30, size=4, min_edge=0.05)),
-        (TradingAgent(sim, "inv", "Inventory/Probe"), probe_inventory),
-        (TradingAgent(sim, "lp", "Liquidity Provider"), liquidity_provider),
+        (TradingAgent(sim, "inv_1", "Inventory/Probe"), probe_inventory),
+        (TradingAgent(sim, "lp_1", "Liquidity Provider"), liquidity_provider),
     ]
 
     # Seed initial long for the contrarian (mean-reversion) bot.
@@ -144,7 +148,7 @@ def main() -> None:
     print("\n=== Final positions & totals for all bots ===")
     # Re-create the same bot list just to report (they are already in the sim)
     # Simpler: just report the known user ids that were used
-    for uid in ["random", "thresh", "trend", "contrarian", "bull", "bear", "inv", "lp"]:
+    for uid in ["punter_1", "punter_4", "expert_1", "punter_5", "whale", "punter_30", "inv_1", "lp_1"]:
         try:
             agent = TradingAgent(sim, uid)  # re-attaches to existing user
             cash = agent.get_cash_balance()
@@ -158,8 +162,8 @@ def main() -> None:
 
     print("\nMarket is ready to be used in the UI (unresolved, lots of open interest).")
     print(f"Market id = {market.id}")
-    print("Users created in this run (from the 300 bot turns): random, thresh, trend, contrarian, bull, bear, inv, lp")
-    print("Run the professional frontend (see start-professional-ui.sh) to switch between them and see what each sees.")
+    print("Users created (chosen to overlap with Kelly histories / Full Teaching Demo): punter_1, punter_4, expert_1, punter_5, whale, punter_30, inv_1, lp_1")
+    print("Run the professional frontend (see start-professional-ui.sh) to switch between them and see what each sees across markets.")
 
 
 if __name__ == "__main__":

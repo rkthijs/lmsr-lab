@@ -53,7 +53,7 @@ def main() -> None:
         title="Will Q3 revenue beat expectations? (adaptive b)",
         b=adaptive,
         initial_subsidy=400.0,
-        fee_rate=0.02,
+        fee_rate=0.025,
     )
     # meanr automatically sees the same market
 

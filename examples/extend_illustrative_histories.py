@@ -50,7 +50,7 @@ def extend_history(path: Path, extra_steps: int = 85) -> int:
     market = sim.create_market(
         title=data.get("name", path.stem),
         b=data.get("market_params", {}).get("b", 25.0),
-        fee_rate=data.get("market_params", {}).get("fee_rate", 0.02),
+        fee_rate=data.get("market_params", {}).get("fee_rate", 0.025),
         initial_subsidy=data.get("market_params", {}).get("initial_subsidy", 0.0),
     )
 

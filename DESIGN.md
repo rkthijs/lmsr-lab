@@ -50,7 +50,7 @@ After evaluating options (CPMM / Uniswap-style, order books, parimutuel, dynamic
 | Parimutuel      | None             | Poor (final only) | Low     | Simple pools              |
 | Pure Scoring (Metaculus-style) | None     | N/A           | Low        | Direct probability reporting |
 
-**Decision**: Start with **binary LMSR, fixed `b` per market**, play money, 2% asymmetric fee. Add dynamic `b`, multi-outcome, etc., later.
+**Decision**: Start with **binary LMSR, fixed `b` per market**, play money, 2.5% asymmetric fee. Add dynamic `b`, multi-outcome, etc., later.
 
 ---
 
@@ -123,7 +123,7 @@ CREATE TABLE markets (
     description         TEXT,
     resolution_criteria TEXT,
     b                   NUMERIC(10,4) NOT NULL,           -- liquidity parameter
-    fee_rate            NUMERIC(5,4) NOT NULL DEFAULT 0.02,
+    fee_rate            NUMERIC(5,4) NOT NULL DEFAULT 0.025,
     initial_subsidy     NUMERIC(20,8) NOT NULL DEFAULT 0,
     status              TEXT NOT NULL DEFAULT 'open',     -- open / closed / resolved
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),

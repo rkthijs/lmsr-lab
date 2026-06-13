@@ -456,7 +456,7 @@ def test_sqlite_store_basic_crud():
 
         # Markets (fixed)
         store.save_market(
-            id="m1", title="Test Fixed", b=25.0, fee_rate=0.02,
+            id="m1", title="Test Fixed", b=25.0, fee_rate=0.025,
             initial_subsidy=50.0, status="open"
         )
         m = store.get_market("m1")
@@ -640,7 +640,7 @@ def test_api_basic_market_and_trade_flow():
     payload = {
         "title": "API Coverage Test",
         "b": 30.0,
-        "fee_rate": 0.02,
+        "fee_rate": 0.025,
         "initial_subsidy": 0.0,
     }
     r = client.post("/markets", json=payload)
@@ -733,7 +733,7 @@ def test_trading_agent_sell_and_adaptive_b():
     sim = LMSRMarketSimulator()
     agent = TradingAgent(sim, "bot_seller")
 
-    m = agent.create_market("Sell test", b=25.0, fee_rate=0.02)
+    m = agent.create_market("Sell test", b=25.0, fee_rate=0.025)
 
     agent.buy_yes(m.id, shares=20)
     before_fees = m.engine.total_fees_earned

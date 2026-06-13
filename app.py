@@ -484,7 +484,7 @@ def _render_market_b_controls_and_price_chart(market, active_id, trades, refresh
         from src.lmsr.market import BinaryLMSRMarket
 
         replay_b = market.get("current_b", 25.0)
-        replay_fee = market.get("fee_rate", 0.02)
+        replay_fee = market.get("fee_rate", 0.025)
         temp = BinaryLMSRMarket(b=replay_b, fee_rate=replay_fee)
         dyn_prices = []
         for t in trades:

@@ -18,7 +18,7 @@ from src.lmsr.market import BinaryLMSRMarket
 # Helpers
 # ------------------------------------------------------------------
 
-def make_market(b: float = 20.0, fee_rate: float = 0.02) -> BinaryLMSRMarket:
+def make_market(b: float = 20.0, fee_rate: float = 0.025) -> BinaryLMSRMarket:
     """Factory for a fresh market instance."""
     return BinaryLMSRMarket(b=b, fee_rate=fee_rate)
 

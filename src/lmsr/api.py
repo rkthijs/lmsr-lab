@@ -63,7 +63,7 @@ class MarketCreate(BaseModel):
     description: str = ""
     resolution_criteria: str = ""
     b: float | StrategySpec = 20.0
-    fee_rate: float = 0.02
+    fee_rate: float = 0.025
     initial_subsidy: float = 0.0
 
 
@@ -88,10 +88,15 @@ class MarketResponse(BaseModel):
     status: str
     current_prices: tuple[float, float]
     current_b: float
-    is_adaptive: bool
+    is_adaptive: bool = False
     total_trades: int
     total_fees_earned: float
-    fee_rate: float = 0.02
+    fee_rate: float = 0.025
+    resolution_outcome: str | None = None
+    market_maker_pl: float | None = None
+    liquidity_alpha: float | None = None
+    liquidity_min_b: float | None = None
+    liquidity_max_b: float | None = None
 
 
 # Global simulator instance (in-memory for now; later can be DB-backed)
@@ -155,17 +160,55 @@ app.add_middleware(
 
 def _market_to_response(market) -> MarketResponse:
     eng = market.engine
+
+    # Compute liquidity strategy details for visibility in admin views
+    liquidity_alpha = None
+    liquidity_min_b = None
+    liquidity_max_b = None
+    try:
+        if getattr(market, 'is_adaptive_b', False):
+            b = getattr(market, 'b', None)
+            if b is not None:
+                if hasattr(b, "inner"):  # BoundedB wrapper
+                    inner = b.inner
+                    liquidity_alpha = getattr(inner, "alpha", None)
+                    liquidity_min_b = getattr(b, "min_b", None)
+                    liquidity_max_b = getattr(b, "max_b", None)
+                elif hasattr(b, "alpha"):  # direct LinearVolumeB
+                    liquidity_alpha = getattr(b, "alpha", None)
+                    liquidity_min_b = getattr(b, "min_b", None)
+                    liquidity_max_b = getattr(b, "max_b", None)
+    except Exception:
+        pass
+
+    mm_pl = None
+    if market.status == "resolved":
+        # Market maker PnL for resolved markets: revenue collected minus payouts made
+        # (initial subsidy is the "capital at risk"; the pl here is the trading result)
+        try:
+            total_payouts = float(sum(p.amount for p in getattr(market, "payouts", [])))
+            mm_pl = float(eng.total_revenue - total_payouts)
+        except Exception:
+            pass
+
     return MarketResponse(
         id=market.id,
         title=market.title,
         status=market.status,
         current_prices=eng.price(),
         current_b=market.current_b,
-        is_adaptive=market.is_adaptive_b,
+        is_adaptive=getattr(market, 'is_adaptive_b', False),
         total_trades=len(market.trades),
         total_fees_earned=eng.total_fees_earned,
         fee_rate=market.fee_rate,
+        resolution_outcome=getattr(market, 'resolution_outcome', None),
+        market_maker_pl=mm_pl,
+        liquidity_alpha=liquidity_alpha,
+        liquidity_min_b=liquidity_min_b,
+        liquidity_max_b=liquidity_max_b,
     )
+
+
 
 
 def _parse_b(spec: float | StrategySpec) -> Any:
@@ -436,9 +479,24 @@ def admin_list_users():
 
 @app.get("/admin/markets")
 def admin_list_markets():
-    """Full list of all markets with details. For admin overview."""
+    """Full list of all markets with details (including market_maker_pl for resolved,
+    and liquidity strategy params for adaptive b markets). For admin overview.
+    Use /admin/markets/{id} for a single market's admin details."""
     sim = get_sim()
     return [_market_to_response(m) for m in sim.list_markets(status=None)]
+
+
+@app.get("/admin/markets/{market_id}")
+def admin_get_market(market_id: str):
+    """Detailed view of a single market, including admin-only fields like
+    market_maker_pl (for resolved markets) and full liquidity config.
+    This powers the per-market admin view in the professional frontend."""
+    sim = get_sim()
+    try:
+        market = sim.get_market(market_id)
+    except KeyError:
+        raise HTTPException(404, f"Market {market_id} not found") from None
+    return _market_to_response(market)
 
 
 @app.get("/admin/activity")
@@ -482,8 +540,23 @@ def list_scenarios():
     """List all curated demo scenarios that can be loaded (same registry as the Streamlit app).
     These match the 'Quick Demo Scenarios' available in app.py.
     """
-    from examples.demo_seeding import get_available_scenarios
-    return {"scenarios": get_available_scenarios()}
+    import sys
+    from pathlib import Path
+
+    # Ensure the project root is importable so "import examples" works
+    # when running via `lmsr serve` / uvicorn from an installed package.
+    here = Path(__file__).resolve()
+    project_root = here.parents[2]  # .../src/lmsr/api.py -> src -> project root
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+    try:
+        from examples.demo_seeding import get_available_scenarios
+        return {"scenarios": get_available_scenarios()}
+    except Exception as e:
+        # Return empty list + error so the UI can show a useful message
+        # instead of a 500 that would be swallowed.
+        return {"scenarios": [], "error": f"Could not load scenarios: {e}"}
 
 
 @app.post("/admin/scenarios/load")
@@ -493,20 +566,36 @@ def load_scenario(payload: ScenarioLoadRequest):
     Streamlit "Quick Demo Scenarios" buttons do. All the demos from demo_seeding.py
     become available in the professional UI.
     """
+    import sys
+    from pathlib import Path
+
+    here = Path(__file__).resolve()
+    project_root = here.parents[2]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
     sim = get_sim()
     try:
         from examples.demo_seeding import run_scenario, get_available_scenarios
-        if payload.name not in get_available_scenarios():
-            raise HTTPException(400, f"Unknown scenario. Available: {get_available_scenarios()}")
+        available = get_available_scenarios()
+        if payload.name not in available:
+            raise HTTPException(400, f"Unknown scenario. Available: {available}")
         # Reset clears all state + the underlying SQLite DB (see simulator.reset + api /reset)
         sim.reset()
-        result = run_scenario(sim, payload.name)
-        return {
-            "success": True,
-            "scenario": payload.name,
-            "result": result,
-            "message": f"Loaded scenario '{payload.name}'. State replaced.",
-        }
+        try:
+            result = run_scenario(sim, payload.name)
+            return {
+                "success": True,
+                "scenario": payload.name,
+                "result": result,
+                "message": f"Loaded scenario '{payload.name}'. State replaced.",
+            }
+        except Exception:
+            # Clean up any partial state from a failed mid-load (e.g. partial trades
+            # for a long history like Experts vs Punters). Leaves the simulator
+            # in a clean state for the next attempt.
+            sim.reset()
+            raise
     except HTTPException:
         raise
     except Exception as e:

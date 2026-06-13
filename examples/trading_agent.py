@@ -102,7 +102,7 @@ def main() -> None:
     rt_m = fixed_agent.create_market(
         title="Exact round-trip demo (fixed b=25)",
         b=25.0,
-        fee_rate=0.02,
+        fee_rate=0.025,
     )
     rt_size = 15
 
@@ -160,7 +160,7 @@ def main() -> None:
     m_fixed = fixed_agent.create_market(
         title="Will the product launch on time? (fixed b=25)",
         b=25.0,
-        fee_rate=0.02,
+        fee_rate=0.025,
     )
 
     print(f"   Market: {m_fixed.title} (id={m_fixed.id})")

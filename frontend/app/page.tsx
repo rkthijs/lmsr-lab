@@ -20,6 +20,12 @@ interface Market {
   is_adaptive: boolean;
   total_trades: number;
   total_fees_earned: number;
+  resolution_outcome?: string | null;
+  market_maker_pl?: number | null;
+  is_adaptive?: boolean;
+  liquidity_alpha?: number | null;
+  liquidity_min_b?: number | null;
+  liquidity_max_b?: number | null;
 }
 
 interface ActivityItem {
@@ -214,9 +220,12 @@ export default function LMSRProfessionalUI() {
         const preferred = list.find(s => s.includes('300') || s.includes('Bot')) || list[0];
         setSelectedScenario(preferred);
       }
+      if (data.error) {
+        setMessage('Scenarios failed to load: ' + data.error);
+      }
     } catch (e: any) {
-      // non-fatal; scenarios are optional nice-to-have in admin
-      console.error('Failed to load scenarios list', e);
+      setScenarios([]);
+      setMessage('Failed to load scenario list (check backend logs / is examples/ importable?): ' + e.message);
     }
   }
 
@@ -260,7 +269,10 @@ export default function LMSRProfessionalUI() {
 
   async function loadMarketDetail(marketId: string) {
     try {
-      const m = await fetchJson(`/markets/${marketId}`);
+      // Use the dedicated admin endpoint when in Admin tab for extra fields
+      // like market_maker_pl and full liquidity strategy details.
+      const path = activeTab === 'admin' ? `/admin/markets/${marketId}` : `/markets/${marketId}`;
+      const m = await fetchJson(path);
       setMarketDetail(m);
     } catch (e: any) {
       setMarketDetail(null);
@@ -369,6 +381,14 @@ export default function LMSRProfessionalUI() {
     }
   }, [selectedUser, markets]);
 
+  // Reload scenarios when switching to the Admin tab (so the dropdown can recover
+  // if the first fetch happened before the server was fully ready or examples import failed temporarily).
+  useEffect(() => {
+    if (activeTab === 'admin') {
+      loadScenarios();
+    }
+  }, [activeTab]);
+
   // Keyboard support for modal: Esc closes market detail view
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -449,6 +469,7 @@ export default function LMSRProfessionalUI() {
   }
 
   const openMarkets = markets.filter(m => m.status === 'open');
+  const resolvedMarkets = markets.filter(m => m.status === 'resolved');
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50">
@@ -567,9 +588,9 @@ export default function LMSRProfessionalUI() {
               </div>
             )}
 
-            {/* Markets + Trade - Kalshi-inspired, dark, Yes=green (emerald), No=red, clear buy/sell + sell-all */}
+            {/* Active Markets */}
             <div>
-              <h2 className="text-xl font-semibold mb-3">Markets &amp; Trade</h2>
+              <h2 className="text-xl font-semibold mb-3">Active Markets</h2>
               <p className="text-sm text-zinc-400 mb-4">
                 Click a market card (title or prices) to open the full <strong>Market View</strong> — price history time series (like the Streamlit TRADE tab), recent trades, quote preview, and focused trading.
                 Click Buy/Sell for Yes (green) or No (red) on the cards for quick trades. Use "Sell All" to exit cleanly.
@@ -577,7 +598,7 @@ export default function LMSRProfessionalUI() {
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 {openMarkets.length === 0 && (
-                  <div className="text-zinc-400 col-span-full">No markets found. Run the 300-round bot demo or seed data first.</div>
+                  <div className="text-zinc-400 col-span-full">No active markets. Load a demo scenario (e.g. Full Teaching or 300-round) in the Admin tab.</div>
                 )}
                 {openMarkets.map(m => {
                   const myPos = userPositions[m.id] || { yes: 0, no: 0 };
@@ -586,11 +607,6 @@ export default function LMSRProfessionalUI() {
 
                   const yesPrice = m.current_prices[0];
                   const noPrice = m.current_prices[1];
-
-                  const openDetail = (e?: React.MouseEvent) => {
-                    if (e) e.stopPropagation();
-                    openMarketView(m.id);
-                  };
 
                   return (
                     <div
@@ -722,6 +738,64 @@ export default function LMSRProfessionalUI() {
                 })}
               </div>
             </div>
+
+            {/* Past / Resolved Markets - now visible to users under their own heading */}
+            <div className="mt-10">
+              <h2 className="text-xl font-semibold mb-3">Past Markets</h2>
+              <p className="text-sm text-zinc-400 mb-4">
+                Resolved markets from loaded demo scenarios. Click any card to open the full Market View (price history, trades, your outcome at resolution).
+                Your realized PnL and payouts for these are reflected in the Portfolio section above.
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                {resolvedMarkets.length === 0 && (
+                  <div className="text-zinc-400 col-span-full">No resolved markets yet. Load the "Full Teaching Demo (Multi-Market)" in the Admin tab to see examples.</div>
+                )}
+                {resolvedMarkets.map(m => {
+                  const myPos = userPositions[m.id] || { yes: 0, no: 0 };
+                  const yesPrice = m.current_prices[0];
+                  const noPrice = m.current_prices[1];
+
+                  return (
+                    <div
+                      key={m.id}
+                      onClick={() => openMarketView(m.id)}
+                      className="border border-zinc-700 rounded-2xl bg-zinc-900 p-5 text-white cursor-pointer hover:border-violet-500/40 hover:bg-zinc-950 transition opacity-90"
+                      title="Click for full history, price path at resolution, and outcome details"
+                    >
+                      <div className="font-semibold text-lg mb-1 flex items-center justify-between">
+                        {m.title}
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-violet-900/40 text-violet-300 text-xs">RESOLVED</span>
+                      </div>
+                      <div className="text-xs text-zinc-400 mb-3">{m.id} • b={m.current_b.toFixed(1)} • resolved to {m.resolution_outcome?.toUpperCase() || '—'}</div>
+
+                      {/* Final Prices */}
+                      <div className="flex gap-3 mb-4">
+                        <div className="flex-1 bg-zinc-950 border border-emerald-500/40 rounded-xl p-3 text-center">
+                          <div className="text-xs text-emerald-400 font-medium tracking-wider">YES (final)</div>
+                          <div className="text-4xl font-bold text-emerald-400 tabular-nums">{(yesPrice * 100).toFixed(1)}<span className="text-xl align-super">¢</span></div>
+                        </div>
+                        <div className="flex-1 bg-zinc-950 border border-red-500/40 rounded-xl p-3 text-center">
+                          <div className="text-xs text-red-400 font-medium tracking-wider">NO (final)</div>
+                          <div className="text-4xl font-bold text-red-400 tabular-nums">{(noPrice * 100).toFixed(1)}<span className="text-xl align-super">¢</span></div>
+                        </div>
+                      </div>
+
+                      {/* Your Position at resolution */}
+                      <div className="mb-3 text-sm">
+                        <div className="text-xs text-zinc-400 mb-1">YOUR POSITION (at resolution)</div>
+                        <div className="flex gap-4">
+                          <div>Yes: <span className="font-semibold text-emerald-400">{myPos.yes}</span></div>
+                          <div>No: <span className="font-semibold text-red-400">{myPos.no}</span></div>
+                          <div className="text-zinc-400 text-xs self-center">Net: {myPos.yes - myPos.no}</div>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-violet-400/70 mt-2">View full price path and outcome details →</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
@@ -741,7 +815,7 @@ export default function LMSRProfessionalUI() {
                       className="w-full border border-zinc-700 rounded-lg px-3 py-2 bg-zinc-950"
                     >
                       {scenarios.length === 0 ? (
-                        <option value="">Loading scenarios...</option>
+                        <option value="">No scenarios loaded — see message above or click Reload</option>
                       ) : (
                         scenarios.map(s => (
                           <option key={s} value={s}>{s}</option>
@@ -762,9 +836,17 @@ export default function LMSRProfessionalUI() {
                   >
                     Reset (empty)
                   </button>
+                  <button
+                    onClick={loadScenarios}
+                    className="h-10 px-3 rounded-xl border border-zinc-700 hover:bg-zinc-800 text-sm font-medium transition"
+                    title="Reload scenario list from backend"
+                  >
+                    ↻ Reload list
+                  </button>
                 </div>
                 <div className="text-[11px] text-zinc-500 mt-2">
                   Loads exactly the same demos as the Streamlit app&apos;s “Quick Demo Scenarios”. Replaces current DB state (markets, users, trades, balances). The 300-round bot demo is pre-selected by default.
+                  If the list is empty, make sure you ran the stack from the project root (so the backend can import <code>examples.demo_seeding</code>).
                 </div>
               </div>
             </div>
@@ -782,7 +864,14 @@ export default function LMSRProfessionalUI() {
                   >
                     <div>
                       <div className="font-medium">{m.title}</div>
-                      <div className="text-[10px] text-zinc-400">{m.id} • b={m.current_b.toFixed(1)} • {m.status} • {m.total_trades} trades</div>
+                      <div className="text-[10px] text-zinc-400">
+                        {m.id} • b={m.current_b.toFixed(1)}
+                        {m.is_adaptive && m.liquidity_alpha != null && ` (adaptive α=${m.liquidity_alpha.toFixed(3)} min=${(m.liquidity_min_b ?? 0).toFixed(0)})`}
+                        • {m.status} • {m.total_trades} trades
+                      </div>
+                      {m.status === 'resolved' && m.market_maker_pl != null && (
+                        <div className="text-[10px] text-emerald-400 mt-0.5">MM PnL: {m.market_maker_pl.toFixed(2)}</div>
+                      )}
                     </div>
                     <div className="text-xs text-red-400">Admin detail →</div>
                   </div>
@@ -937,8 +1026,11 @@ export default function LMSRProfessionalUI() {
                 {/* Key metrics */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
-                    <div className="text-zinc-400 text-xs">Current b</div>
+                    <div className="text-zinc-400 text-xs">Current Liquidity b</div>
                     <div className="font-semibold text-lg">{marketDetail?.current_b?.toFixed(1) ?? '—'}</div>
+                    {marketDetail?.is_adaptive && (
+                      <div className="text-[10px] text-emerald-400">adaptive</div>
+                    )}
                   </div>
                   <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
                     <div className="text-zinc-400 text-xs">Total Trades</div>
@@ -950,7 +1042,7 @@ export default function LMSRProfessionalUI() {
                   </div>
                   <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
                     <div className="text-zinc-400 text-xs">Fee Rate</div>
-                    <div className="font-semibold text-lg">{((marketDetail?.fee_rate ?? 0.02) * 100).toFixed(1)}%</div>
+                    <div className="font-semibold text-lg">{((marketDetail?.fee_rate ?? 0.025) * 100).toFixed(1)}%</div>
                   </div>
                 </div>
 
@@ -1115,58 +1207,68 @@ export default function LMSRProfessionalUI() {
                   <div className="text-[10px] text-zinc-400 mt-1">Showing latest trades. Price after = market price immediately following this trade.</div>
                 </div>
 
-                {/* Focused trading + quote inside the market view (works for both user and admin contexts) */}
-                <div className="border-t border-zinc-700 pt-4">
-                  <div className="font-semibold mb-1">Trade as <span className="text-emerald-400">{selectedUser}</span> on this market</div>
-                  <div className="flex gap-2 items-end mb-3">
-                    <div>
-                      <div className="text-xs text-emerald-400 mb-1">YES shares</div>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={modalTradeAmountYes}
-                        onChange={(e) => setModalTradeAmountYes(Math.max(0, parseInt(e.target.value) || 0))}
-                        className="w-28 bg-zinc-900 border border-emerald-500/40 rounded-lg px-3 py-1.5 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <div className="text-xs text-red-400 mb-1">NO shares</div>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={modalTradeAmountNo}
-                        onChange={(e) => setModalTradeAmountNo(Math.max(0, parseInt(e.target.value) || 0))}
-                        className="w-28 bg-zinc-900 border border-red-500/40 rounded-lg px-3 py-1.5 text-sm"
-                      />
-                    </div>
-                    <button
-                      onClick={doModalTrade}
-                      disabled={modalTradeAmountYes === 0 && modalTradeAmountNo === 0}
-                      className="h-9 px-5 rounded-xl bg-white text-black text-sm font-semibold disabled:bg-zinc-800 disabled:text-zinc-400"
-                    >
-                      Execute Trade
-                    </button>
-                    <button onClick={() => { setModalTradeAmountYes(0); setModalTradeAmountNo(0); setModalQuote(null); }} className="h-9 px-4 text-sm border border-zinc-700 rounded-xl">
-                      Clear
-                    </button>
-                  </div>
-
-                  {/* Live quote / impact (from /quote) */}
-                  {modalQuote && (
-                    <div className="text-sm bg-zinc-900 border border-zinc-700 rounded-xl p-3 mb-3">
-                      <div>Est. cost: <span className="font-semibold tabular-nums">{modalQuote.effective_cost?.toFixed(2)}</span> (fee {modalQuote.fee?.toFixed(2) || '0.00'})</div>
-                      <div className="text-xs text-zinc-400 mt-0.5">
-                        Price after: {(modalQuote.price_after?.[0]*100||0).toFixed(1)}¢ / {(modalQuote.price_after?.[1]*100||0).toFixed(1)}¢
-                        {'  •  '} Impact: {modalQuote.impact?.[0]?.toFixed(4)} / {modalQuote.impact?.[1]?.toFixed(4)}
-                        {'  •  '} Slippage: {modalQuote.slippage?.toFixed(4)}
+                {/* Focused trading + quote inside the market view (only for open markets) */}
+                {marketDetail?.status === 'open' ? (
+                  <div className="border-t border-zinc-700 pt-4">
+                    <div className="font-semibold mb-1">Trade as <span className="text-emerald-400">{selectedUser}</span> on this market</div>
+                    <div className="flex gap-2 items-end mb-3">
+                      <div>
+                        <div className="text-xs text-emerald-400 mb-1">YES shares</div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={modalTradeAmountYes}
+                          onChange={(e) => setModalTradeAmountYes(Math.max(0, parseInt(e.target.value) || 0))}
+                          className="w-28 bg-zinc-900 border border-emerald-500/40 rounded-lg px-3 py-1.5 text-sm"
+                        />
                       </div>
+                      <div>
+                        <div className="text-xs text-red-400 mb-1">NO shares</div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={modalTradeAmountNo}
+                          onChange={(e) => setModalTradeAmountNo(Math.max(0, parseInt(e.target.value) || 0))}
+                          className="w-28 bg-zinc-900 border border-red-500/40 rounded-lg px-3 py-1.5 text-sm"
+                        />
+                      </div>
+                      <button
+                        onClick={doModalTrade}
+                        disabled={modalTradeAmountYes === 0 && modalTradeAmountNo === 0}
+                        className="h-9 px-5 rounded-xl bg-white text-black text-sm font-semibold disabled:bg-zinc-800 disabled:text-zinc-400"
+                      >
+                        Execute Trade
+                      </button>
+                      <button onClick={() => { setModalTradeAmountYes(0); setModalTradeAmountNo(0); setModalQuote(null); }} className="h-9 px-4 text-sm border border-zinc-700 rounded-xl">
+                        Clear
+                      </button>
                     </div>
-                  )}
 
-                  <div className="text-[10px] text-zinc-400">Positive = buy that side. Negative values allowed for sell. Uses the same integer shares + quote engine as the cards.</div>
-                </div>
+                    {/* Live quote / impact (from /quote) */}
+                    {modalQuote && (
+                      <div className="text-sm bg-zinc-900 border border-zinc-700 rounded-xl p-3 mb-3">
+                        <div>Est. cost: <span className="font-semibold tabular-nums">{modalQuote.effective_cost?.toFixed(2)}</span> (fee {modalQuote.fee?.toFixed(2) || '0.00'})</div>
+                        <div className="text-xs text-zinc-400 mt-0.5">
+                          Price after: {(modalQuote.price_after?.[0]*100||0).toFixed(1)}¢ / {(modalQuote.price_after?.[1]*100||0).toFixed(1)}¢
+                          {'  •  '} Impact: {modalQuote.impact?.[0]?.toFixed(4)} / {modalQuote.impact?.[1]?.toFixed(4)}
+                          {'  •  '} Slippage: {modalQuote.slippage?.toFixed(4)}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="text-[10px] text-zinc-400">Positive = buy that side. Negative values allowed for sell. Uses the same integer shares + quote engine as the cards.</div>
+                  </div>
+                ) : (
+                  <div className="border-t border-zinc-700 pt-4">
+                    <div className="bg-zinc-900 border border-violet-700/40 rounded-2xl p-4">
+                      <div className="font-semibold text-violet-300">Market Resolved</div>
+                      <div className="mt-1">Outcome: <span className="font-bold uppercase tracking-widest">{marketDetail?.resolution_outcome || '—'}</span></div>
+                      <div className="text-xs text-zinc-400 mt-1">No further trading allowed. Check the price history above and your realized position/payout in the main Portfolio section.</div>
+                    </div>
+                  </div>
+                )}
 
                 {/* ==================== ADMIN VERSION EXTRAS ==================== */}
                 {activeTab === 'admin' && (
@@ -1174,6 +1276,22 @@ export default function LMSRProfessionalUI() {
                     <div className="font-semibold text-lg flex items-center gap-2">
                       Admin Controls — {marketDetail?.title}
                       <span className="text-xs px-2 py-0.5 rounded bg-red-900/30 text-red-300 border border-red-700">ADMIN ONLY</span>
+                    </div>
+
+                    {/* Liquidity parameter visibility for admin */}
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-4 text-sm">
+                      <div className="font-medium mb-1 text-emerald-300">Liquidity Parameter (b)</div>
+                      <div>Current b: <span className="font-semibold tabular-nums">{(marketDetail?.current_b ?? 0).toFixed(1)}</span></div>
+                      {marketDetail?.is_adaptive ? (
+                        <div className="text-xs text-zinc-400 mt-1">
+                          Adaptive strategy
+                          {marketDetail?.liquidity_alpha != null && ` • α=${marketDetail.liquidity_alpha.toFixed(4)}`}
+                          {marketDetail?.liquidity_min_b != null && ` • min_b=${marketDetail.liquidity_min_b.toFixed(0)}`}
+                          {marketDetail?.liquidity_max_b != null && ` • max_b=${marketDetail.liquidity_max_b.toFixed(0)}`}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-zinc-400 mt-1">Fixed b (classic LMSR)</div>
+                      )}
                     </div>
 
                     {/* Resolve this specific market */}
@@ -1244,6 +1362,15 @@ export default function LMSRProfessionalUI() {
                     </div>
 
                     <div className="text-xs text-amber-400/80">Tip: Global activity for this market is also visible in the main Admin “Recent Activity” table. You can also change b strategies via the API if needed.</div>
+
+                    {/* Resolution PnL for admin when viewing resolved market */}
+                    {marketDetail?.status === 'resolved' && marketDetail?.market_maker_pl != null && (
+                      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-4">
+                        <div className="text-sm font-medium mb-1 text-red-300">Market Maker PnL (this market)</div>
+                        <div className="font-semibold tabular-nums text-2xl text-emerald-400">{marketDetail.market_maker_pl.toFixed(2)}</div>
+                        <div className="text-[10px] text-zinc-400 mt-1">Revenue collected minus total payouts to winners (subsidy is separate capital at risk).</div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -295,7 +295,7 @@ def main() -> None:
         title="Will the new feature launch on time? (true p_yes = 0.8, starts at 0.5)",
         b=adaptive,
         initial_subsidy=500.0,
-        fee_rate=0.02,
+        fee_rate=0.025,
     )
 
     # Create agents and pair them with strategies.
