@@ -161,51 +161,58 @@ print("OK")
    - Ruff (lint + format) and mypy are configured and part of `dev` extras
    - Keep `.gitignore` sensible (ignore `__pycache__`, `.venv`, `.hermes` local state, build artifacts)
 
-## Current Status & Roadmap (as of late May 2026)
+## Current Status & Roadmap (as of mid June 2026)
 
-The project has significantly exceeded the original conservative scope (single `BinaryLMSRMarket` engine). It is now a high-quality, well-tested, educational/research-oriented **in-memory prediction market simulator** with:
+The project has significantly exceeded the original conservative scope (single `BinaryLMSRMarket` engine). It is now a high-quality, well-tested, educational/research-oriented **prediction market simulator** (with optional SQLite persistence) featuring:
 
-- Full multi-market `LMSRMarketSimulator` (trades, users, portfolios, payouts, per-trade Brier/Log scores, accounting identity, leaderboard)
-- First-class support for both fixed and dynamic/adaptive liquidity (`b`) strategies
-- Rich example tooling (16+ histories including large Kelly-generated ones, replay + comparison, PDF report generation)
-- Polished Streamlit demo (auto-seeded markets, confirmation dialogs, interactive b explorer, adaptive strategy support)
-- Proper packaging, 45+ passing tests, ruff/mypy config, and extensive documentation (polished DESIGN.md + README)
+- Numerically stable core `BinaryLMSRMarket` + full multi-market `LMSRMarketSimulator` (immutable trade logs, users + balances, cross-market portfolios, per-trade Brier + Log scores, accounting identity verification on resolution, global leaderboard)
+- First-class support for fixed `b` and dynamic/adaptive liquidity strategies (`BoundedB` + `LinearVolumeB`, etc.)
+- Rich example tooling (Kelly history generators, 16+ realistic histories, replay/comparison tools, PDF report generation)
+- Two polished demo frontends sharing the same backend/seeding:
+  - Streamlit (`app.py`) — fast interactive demo with b-recommender, multi-market views, scenario buttons
+  - Professional UI (`frontend/`) — separate Next.js (React + TS + Tailwind) + FastAPI stack with user switcher (exact per-user cash/position/total/portfolio/positions), rich admin capabilities, and sortable tables
+- SQLite as the primary durable store (replay-based loading of trade logs; `lmsr_demo.db` is the shared demo database)
+- Proper packaging (`lmsr-lab`), 45+ passing tests, ruff/mypy, and living documentation (AGENTS.md, DESIGN.md, READMEs, DEMO_SCRIPT.md)
 
-See the plan file (`.hermes/plans/2026-05-21_...-lmsr-prediction-market-plan.md`) and the "Remaining Gaps vs Original Vision" section in DESIGN.md for context.
+See `.hermes/plans/` and DESIGN.md "Remaining Gaps" for historical context.
 
-### Delivered (solid, ready for research / soft demo use)
-- Numerically stable core + simulator with strong invariants
-- Adaptive b fully integrated and surfaced in UI
-- Calibration scoring attached to every resolved trade
-- Kelly-based history generators + realistic rug-pull / trend scenarios
-- Demo polish + `DEMO_SCRIPT.md` for walkthroughs
-- Accounting identity as a first-class checked property
+### Delivered (solid for research, teaching, and soft demos)
+- Numerically stable core + simulator with strong invariants (prices sum to 1, non-negative positions, accounting identity)
+- Adaptive `b` fully integrated and visible (in UIs + admin detail)
+- Calibration scoring (Brier + Log) attached to every resolved trade + global leaderboard
+- Realistic history generators + scenarios (rug-pull, high-activity Kelly, long trends, experts-vs-punters, bot activity)
+- Demo polish + `DEMO_SCRIPT.md`
+- Accounting identity as first-class checked property
+- **Professional separate frontend + backend** (Next.js over FastAPI, completely independent of Streamlit):
+  - User tab: exact per-user view (three-value accounting, portfolio, per-market positions); trade as any user; user-filtered "Past Markets" (only those where the user held positions)
+  - Admin tab: global activity feed, sortable "All Users" table (User/Balance/Open/Resolved), sortable Global Leaderboard (with per-metric columns), "All Markets" grid (click for rich modal), resolve controls (now a dropdown of open markets)
+  - Market View modal: price-history SVG chart (hoverable), recent trades, quote preview, focused trading; admin mode adds cross-user positions + direct resolve
+  - Loading states + skeletons (TanStack Query powered), scenario loading (consolidated), integer shares, 2.5% default fee
+  - TanStack Query (#2), type tightening (#3), UX polish (#4), sortable tables, user-active past markets filter
+- **Consolidated demo scenarios** (via `SCENARIO_REGISTRY` used by both UIs):
+  - "Full Teaching Demo (Multi-Market)" — primary; merges balanced trading, rug-pull, high-activity Kelly, experts-vs-punters, long trends, etc. into one rich state (multiple open + resolved markets + overlapping users)
+  - "Long Bot Activity Demo (300 rounds, Open)" — kept separate for rich cross-user views (punter_*/expert_*/whale + 8+ strategies); deep unresolved history
+  - "Deep Single Active Market (Open)" — new standalone single deep open market (long high-volume history) for exercising the modal chart + many trades
+- Persistence (SQLite + JSON), full FastAPI layer, integer shares only, extensive tests + docs
 
 ### Remaining notable gaps (mostly future architecture / productionization)
-These are expected — the deliberate focus was an excellent research simulator, not yet a production platform.
+These are expected — the deliberate focus was an excellent research simulator + demo tooling, not a production platform.
 
-- [x] **Persistence**: SQLite backend (stdlib `sqlite3`, no new deps) replacing pickle for the main app/demo. `LMSRMarketSimulator(db_path=...)` now loads by replaying the immutable trade log and persists create/trade/resolve effects (user balances, payouts, scores). Proper transactions around trade+balance and resolve. In-memory mode (db_path=None) and pickle/JSON save/load remain for experiments/tests. Schema follows DESIGN.md. High priority item complete.
-- [x] **JSON state**: `save_json`/`load_json` + `to_dict`/`from_dict` added (roundtrippable, supports adaptive b, works with DB too). Complements pickle and DB.
-- [x] **API layer**: Clean, stable FastAPI (see `src/lmsr/api.py` + `lmsr serve`). Core interactive paths in the Streamlit demo (`app.py`) now go through the API layer via in-process `TestClient` (trading, quotes, b-strategy changes, resolve, portfolio summary, leaderboard). A few rich read-only demo views (cross-trader positions table, payout history, stored scores on resolved markets) still use the injected simulator directly for expediency; these are clearly marked and will be migrated when small additional endpoints exist. The architecture is ready for remote clients. High priority item complete.
-- [ ] **Professional frontend**: Modern web UI (e.g. Next.js/React) over the API layer, keeping Python engine as source of truth. Streamlit remains the quick demo vehicle for now.
-  - [x] #1: Monolith refactor — page.tsx is now thin orchestrator; logic centralized in `useProData` hook; extracted 4 components (Leaderboard, MarketCard, PriceHistoryChart, MarketModal) + `types.ts` (prep for stricter types).
-  - [x] #2: Data fetching — adopted TanStack Query (`@tanstack/react-query`). All primary loads use `useQuery` (users, markets, activity, leaderboard with metric key, account/portfolio per-user, scenarios, modal marketDetail/trades). All mutating actions (trade, resolve, load scenario, reset) use `useMutation` + targeted `invalidateQueries` on success. Shared `apiFetch` (robust FastAPI error handling). `QueryClientProvider` via `providers.tsx` + layout. `useFetch` legacy kept but new code prefers `apiFetch`. Manual refresh buttons still work; auto refetch reduced. Build verified clean.
-  - [x] #3: Type tightening — removed all `(pro as any)` casts and fake `.fetchJson` in page.tsx modal integration by properly destructuring `refreshCurrentMarketDetail`, `loadAdminMarketPositions`, `updateModalQuote` + using real `setResolve*`/`doResolve` for onResolve. Fixed `modalQuote: QuoteResponse | null` in types (was `any`). Removed remaining loose `any` in catches, Trade maps, and SVG rect access (direct .getBoundingClientRect()). Pruned obsolete mount effects in page (data now RQ-driven). All builds clean with no TS errors.
-  - [x] #4: Polish UX — added loading states + skeletons powered by TanStack Query. Hook now exposes `isLoading`, `isLoadingAccount`, `isLoadingMarkets`, `isLoadingLeaderboard`, `isLoadingUsers`, `isLoadingActivity`, `isLoadingMarketDetail` etc. (granular). 
-    - User view: pulsing skeleton bars for the 3 account value cards, portfolio metrics, and placeholder cards in Active/Past markets grids while loading.
-    - Admin view: skeleton rows for users table + activity table, skeleton list items for markets list, improved loading for leaderboard (via prop) and scenarios. Refresh All button disables + shows "Refreshing…" while isLoading.
-    - Market modal: skeleton boxes for the large YES/NO price cards, pulsing placeholder for price history chart, skeleton rows for recent trades table, skeleton for admin cross-user positions table.
-    - Uses standard Tailwind `animate-pulse bg-zinc-800` (no new components/deps). Leverages RQ `isLoading` (initial) + existing data for smooth transitions. Builds clean.
-- [ ] **Bot / agent ergonomics**: Higher-level client or thin wrapper making it trivial for RL agents, Kelly bots, etc. to participate in markets.
-- [ ] **CLI**: Small entry point for common experiment tasks (replay histories with different b, batch scoring, etc.).
-- [ ] **JSON state**: Convenience (de)serialization for simulator state alongside pickle (easier sharing of experiment setups).
-- [ ] **Advanced scoring / analytics**: Deeper integration of per-trade scores into portfolio views; more Murphy decomposition tooling or visualization.
-- [ ] **Dynamic b research**: Continued experimentation with better default adaptive strategies and volume-sensitivity rules (see DESIGN.md and adaptive.py module docstring).
+- [x] **Persistence**: SQLite (replay-based) + JSON (`save_json`/`load_json` + `to_dict`/`from_dict`). `LMSRMarketSimulator(db_path=...)` is the recommended path for demos. In-memory and pickle still supported for experiments.
+- [x] **API layer**: Stable FastAPI (`src/lmsr/api.py`, `lmsr serve`). Used by both Streamlit (via TestClient) and the professional UI (remote-capable). Rich admin endpoints + normal user endpoints.
+- [x] **Professional frontend**: Modern Next.js UI over the API (user + admin experiences). See "Professional Separate Frontend + Backend" in README.md + `frontend/`. Now includes sortable tables, loading states/skeletons, user-filtered past markets, consolidated scenarios, rich modal with chart, etc. Streamlit remains the quick vehicle.
+- [ ] **Bot / agent ergonomics**: Higher-level client wrapper (the `TradingAgent` exists but could be more ergonomic for RL/Kelly experiments).
+- [ ] **CLI**: Small entry point for common tasks (parameter sweeps, batch replay + scoring).
+- [ ] **Advanced scoring / analytics**: Deeper per-trade score integration, Murphy decomposition visuals, calibration curves.
+- [ ] **Dynamic b research**: More production-grade strategies, volume-sensitivity tuning, research experiments.
+- [ ] **Multi-outcome / more complex markets**: The core is binary-focused; design exists for generalization.
 
 **Near-term small wins** (easy to pick up):
-- Add more adaptive b + extreme edge-case tests (suite is already strong)
-- A lightweight `examples/experiments.py` for parameter sweeps (fixed vs. adaptive comparisons, calibration curves, etc.)
-- Minor docstring / type polish on public APIs (ruff + mypy surface low-hanging fruit)
+- More adaptive-b + extreme-edge tests
+- `examples/experiments.py` for sweeps (fixed vs adaptive, calibration, etc.)
+- Minor public API polish (docstrings, mypy)
+
+When in doubt, re-read this file + DESIGN.md + the plan in `.hermes/plans/`.
 
 When in doubt about priority or design for any of the above, re-read DESIGN.md and the plan in `.hermes/plans/`.
 
@@ -218,5 +225,5 @@ When an agent is unsure about requirements, math, or design choices:
 
 ---
 
-**Last updated**: 2026-06-13 (pro-ui #4 UX polish complete: TanStack Query loading states + Tailwind skeletons across user/admin/modal views; #2 and #3 commits followed by this work; builds clean; docs updated).
+**Last updated**: 2026-06-13 (documented current state: pro-UI sortable columns (All Users + Leaderboard), user-filtered Past Markets by default, added "Deep Single Active Market (Open)" scenario, consolidated non-bot scenarios into Full Teaching + kept Long Bot separate; full pro-UI + backend polish + docs refresh; all recent commits captured).
 **Maintainer note**: Treat this file as living documentation. Keep it concise but actionable. Update it whenever architecture, tooling, or scope meaningfully changes.

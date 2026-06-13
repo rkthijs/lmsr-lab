@@ -274,7 +274,7 @@ Open http://localhost:3000.
 
 - Use the top user dropdown to switch between the 300-round bot users (`bull`, `contrarian`, `bear` who buys No when price is high, boosted `random`, etc.) and see exactly what each one sees.
 - Switch to the Admin tab to see global activity across everyone and resolve markets.
-- In the Admin tab there is now a **Demo Scenarios** section at the top with a dropdown. The primary one is the comprehensive "Full Teaching Demo (Multi-Market)" (merges balanced trading, rug pull, high-activity, experts-vs-punters, long trends, etc. into one rich multi-market state). The separate "Long Bot Activity Demo (300 rounds, Open)" is also available. "Load Selected Scenario" (or "Reset (empty)") replaces the current DB state exactly as the Streamlit scenario buttons do.
+- In the Admin tab there is now a **Demo Scenarios** section at the top with a dropdown. The primary comprehensive one is "Full Teaching Demo (Multi-Market)" (merges balanced trading, rug pull, high-activity, experts-vs-punters, long trends, etc. into one rich multi-market state with resolved + open markets). The separate "Long Bot Activity Demo (300 rounds, Open)" (rich overlapping bot users + deep history) and "Deep Single Active Market (Open)" (standalone deep single open market for chart/position testing) are also available. "Load Selected Scenario" (or "Reset (empty)") replaces the current DB state exactly as the Streamlit scenario buttons do.
 
 The script is the easiest on-ramp for collaborators. Everything uses the same persistent `lmsr_demo.db` as the rest of the project and has zero dependency on the Streamlit demo.
 
