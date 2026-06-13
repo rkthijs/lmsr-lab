@@ -47,6 +47,18 @@ export default function LMSRProfessionalUI() {
     }
   }, [activeTab, leaderboardMetric]);
 
+  // Auto-select the first open market in the Resolve dropdown when the list changes
+  // (after loading scenarios, resolving a market, or reset). This replaces the old free-text input.
+  useEffect(() => {
+    if (openMarkets.length > 0) {
+      if (!resolveMarketId || !openMarkets.some(m => m.id === resolveMarketId)) {
+        setResolveMarketId(openMarkets[0].id);
+      }
+    } else if (resolveMarketId) {
+      setResolveMarketId('');
+    }
+  }, [openMarkets]);
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50">
       <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-50">
@@ -450,13 +462,23 @@ export default function LMSRProfessionalUI() {
               <h2 className="text-xl font-semibold mb-3">Resolve Markets (Admin)</h2>
               <div className="flex gap-3 items-end bg-zinc-900 border border-zinc-800 p-4 rounded-2xl">
                 <div className="flex-1">
-                  <label className="text-xs block mb-1 text-zinc-500">Market ID</label>
-                  <input 
-                    value={resolveMarketId} 
-                    onChange={e => setResolveMarketId(e.target.value)} 
-                    placeholder="e.g. m1" 
-                    className="w-full border border-zinc-700 rounded-lg px-3 py-2 bg-zinc-950" 
-                  />
+                  <label className="text-xs block mb-1 text-zinc-500">Open Market</label>
+                  <select
+                    value={resolveMarketId}
+                    onChange={e => setResolveMarketId(e.target.value)}
+                    disabled={openMarkets.length === 0}
+                    className="w-full border border-zinc-700 rounded-lg px-3 py-2 bg-zinc-950 disabled:opacity-50"
+                  >
+                    {openMarkets.length === 0 ? (
+                      <option value="">No open markets</option>
+                    ) : (
+                      openMarkets.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.title} ({m.id}) • b={m.current_b.toFixed(1)}
+                        </option>
+                      ))
+                    )}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs block mb-1 text-zinc-500">Outcome</label>
@@ -467,12 +489,13 @@ export default function LMSRProfessionalUI() {
                 </div>
                 <button 
                   onClick={doResolve}
-                  className="h-10 px-6 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 active:bg-red-800"
+                  disabled={!resolveMarketId || openMarkets.length === 0}
+                  className="h-10 px-6 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 active:bg-red-800 disabled:bg-zinc-700 disabled:text-zinc-400 disabled:cursor-not-allowed"
                 >
                   Resolve Market
                 </button>
               </div>
-              <div className="text-xs text-zinc-500 mt-2">This resolves the market for everyone. Payouts are credited immediately.</div>
+              <div className="text-xs text-zinc-500 mt-2">Select any currently open market and resolve it for everyone. Payouts and scores are recorded immediately.</div>
             </div>
           </div>
         )}
