@@ -296,16 +296,16 @@ This section captures the currently identified directions for evolving the syste
 - **Professional Web Demo** — Build a production-quality demonstration using a Python (FastAPI) backend that wraps the existing engine, paired with a modern Node.js frontend (e.g. React/Next.js). The goal is a professional-looking interface suitable for internal stakeholders while preserving the Python core as the single source of truth. Long-term, this path may lead to retiring or de-emphasizing the current Streamlit application.
 
 ### Data Persistence Layer
-- **Robust SQL Database Backend** — Move from the current in-memory + pickle model to a production-grade SQL database (PostgreSQL) with proper schema, transactions, concurrency control (row-level or optimistic locking), migrations, and full support for users, balances, trades, payouts, and scores. This is a prerequisite for real-world trading scenarios.
+- **Production-grade Persistence** — SQLite (replay-based with `db_path`, transactions around trades/resolves, `clear_all` on reset) is now the primary durable backend for demos and the shared `lmsr_demo.db`. In-memory (`db_path=None`) and legacy pickle remain available for experiments. Future work could include a more robust concurrent backend (e.g. PostgreSQL) with migrations, better multi-user concurrency, etc. for production-scale use.
 - **Internal Blockchain for Audit Trails (Exploratory / Low Priority)** — Investigate the use of a strictly internal (private/permissioned) blockchain or hash-chained ledger to provide tamper-proof, verifiable audit trails for trades, balance changes, and resolutions. This component must remain completely invisible from outside the system and is currently considered low-priority research.
 
 ### Other Open Items
 - **Dynamic `b`** — Basic support for adaptive/liquidity-sensitive `b` now exists via `src/lmsr/adaptive.py`. Further research into effective default strategies and their theoretical properties remains valuable.
 - Multi-outcome and scalar markets.
-- Proper JSON (de)serialization of histories and full simulator state (in addition to pickle).
 - Richer calibration visualizations (e.g., reliability diagrams).
 - Kelly-criterion position-sizing helpers exposed in the public API.
 - Admin capabilities for market creation and resolution.
+- (JSON state serialization of histories and full simulator state is implemented via `save_json`/`load_json` + `to_dict`/`from_dict` and complements pickle/DB.)
 
 ---
 

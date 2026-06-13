@@ -26,7 +26,7 @@ streamlit run app.py
 ## 2. Recommended Demo Flow (Core Narrative)
 
 ### Opening (30–45 seconds)
-- "This is an in-memory research simulator for Logarithmic Market Scoring Rule (LMSR) prediction markets."
+- "This is a research-grade simulator for Logarithmic Market Scoring Rule (LMSR) prediction markets, with optional durable persistence."
 - "It's designed for internal forecasting and calibration work — think company-internal markets rather than public crypto prediction markets."
 - "The core is written in Python. We're currently exploring moving toward a more professional web stack (FastAPI + modern frontend)."
 
@@ -80,9 +80,9 @@ streamlit run app.py
 ### Closing / Future Direction (30–45 seconds)
 - "Right now this is a research-grade tool with a Streamlit interface."
 - "Our next steps include:
-  - A proper FastAPI backend that wraps this Python engine
-  - A more professional frontend (Node.js / React)
-  - A robust SQL persistence layer for real audit and concurrency needs
+  - A proper FastAPI backend that wraps this Python engine (already in use by the separate professional UI)
+  - A more professional frontend (Node.js / React) — already prototyped and actively used
+  - Further production-grade persistence work on top of the current SQLite backend (for real audit/concurrency needs)
   - An internal agent API so bots and automated strategies can participate cleanly"
 - "The Python core stays as the engine — we're just adding professional layers around it."
 

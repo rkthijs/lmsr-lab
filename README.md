@@ -414,14 +414,14 @@ See `src/lmsr/adaptive.py` for the full list, detailed documentation, and more e
 
 ---
 
-## Persistence (New)
+## Persistence
 
-By default `LMSRMarketSimulator()` is fully in-memory (fast for tests and experiments). For durable storage (state survives restarts of the demo, API server, or your scripts) you can pass a `db_path`:
+`LMSRMarketSimulator()` is in-memory by default (fast for tests and experiments). For durable storage where state survives restarts of the demo, API server, or scripts, pass a `db_path` (SQLite is the recommended path for demos):
 
 ```python
 from src.lmsr import LMSRMarketSimulator
 
-# File-backed (recommended for the demo / long-running use)
+# File-backed SQLite (recommended for demos / long-running use)
 sim = LMSRMarketSimulator(db_path="my_simulation.db")
 
 # Or an in-memory DB (great for isolated tests)
@@ -437,14 +437,16 @@ sim = LMSRMarketSimulator(db_path=":memory:")
 On startup with a `db_path`, the simulator **replays** the trade history into the LMSR engines so that positions, prices, and the sell-guard state are derived exactly as described in `DESIGN.md`. This keeps the on-disk format simple and auditable.
 
 **The demo / API server**
-The Streamlit demo and `lmsr serve` now use a local SQLite file (`lmsr_demo.db` in the current directory) by default. Your markets, trades, and balances will survive restarting the server or the Streamlit app.
+The Streamlit demo and `lmsr serve` use a local SQLite file (`lmsr_demo.db`) by default. Markets, trades, and balances survive restarting the server or Streamlit.
 
-**Migration / compatibility**
-- Old pickle `save()` / `load()` still work for full object snapshots (useful for experiments).
-- Passing `db_path=None` (the default) gives the classic pure in-memory behavior.
-- The relational schema follows the one documented in `DESIGN.md` (with TEXT ids for compatibility with the existing "m1"/"alice" style identifiers).
+**Other options**
+- JSON state (`save_json`/`load_json` + `to_dict`/`from_dict`) for full simulator snapshots (works with or without a db_path).
+- Legacy pickle `save()` / `load()` still works for experiments.
+- `db_path=None` (the default) gives classic pure in-memory behavior.
 
-See the docstring of `LMSRMarketSimulator` and `src/lmsr/db.py` for more details.
+The relational schema follows the design in `DESIGN.md` (TEXT ids for "m1"/"alice"-style compatibility).
+
+See the `LMSRMarketSimulator` docstring and `src/lmsr/db.py` for details.
 
 ---
 
