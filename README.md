@@ -195,19 +195,13 @@ quote = agent.quote(m.id, shares_yes=10)
 print("Hypothetical cost:", quote)
 ```
 
-See the full runnable example:
-
-```bash
-python examples/trading_agent.py
-```
-
-The example demonstrates multiple agents, fixed vs adaptive `b`, simple strategies, quoting, and fee/spread tracking.
+See the dedicated bot section below and `examples/README.md` for the full collection (including the new `simple_bots.py` library and the 300-round UI demo).
 
 ---
 
 ## Educational Examples
 
-The `examples/` directory is designed for exploration:
+The `examples/` directory is designed for exploration, including a significantly expanded set of bot examples (see below).
 
 ```bash
 # Replay a history with different b values
@@ -233,13 +227,118 @@ lmsr compare examples/trade_histories/balanced_trades.json --b 15,30,60
 
 The CLI provides a small entry point for the most common experiment tasks (replay + b-comparison). It dispatches to the tools in `examples/`. More subcommands (batch scoring, experiment runner) will be added over time.
 
-**Bot & Agent Example**
+**Bot & Agent Examples (significantly expanded)**
 
 ```bash
-python examples/trading_agent.py
+python examples/simple_bots.py          # Library of 7 basic strategies (random, trend, contrarian, belief, etc.)
+python examples/interleaved_bots.py     # Clean two-bot interleaving demo (trend vs mean-reversion)
+python examples/trading_agent.py        # Original broader tour + round-trips
+python examples/ui_300_round_bots.py    # 300-round unresolved market (true p≈0.8, starts at 0.5)
 ```
 
-Demonstrates `TradingAgent` (the recommended ergonomic API for bots/RL agents), fixed vs. adaptive liquidity, simple trading strategies, and cross-agent portfolio inspection.
+The new `examples/simple_bots.py` provides reusable single-step implementations of the simplest bot types. All modern examples now:
+- Use the three values users care about (cash balance, mark-to-market position value, total equity).
+- Demonstrate interleaving strategies on the same market.
+- Use the built-in b-recommendation tool (see the 🧮 expander in the Streamlit app) to choose plausible liquidity instead of magic numbers.
+- Enforce integer shares only.
+
+A long-running unresolved 300-round bot demo (with an informed "bull" that knows the true probability is ~0.8 while the market starts mispriced at 0.5) is available as a one-click scenario in the Streamlit UI under **"🚀 Quick Demo Scenarios"** → **"Long Bot Activity Demo (300 rounds, Open)"**.
+
+See `examples/README.md` for full details, composition examples, and how to use these bots in your own research or RL setups.
+
+### Professional Separate Frontend + Backend (completely independent of Streamlit)
+
+A full professional stack lives in `frontend/` (Next.js + React + TypeScript + Tailwind). This is a **separate UI entity** — do **not** touch or depend on the Streamlit demo (`app.py`).
+
+**What it provides**
+- **Backend (enhanced FastAPI)**: Admin views to see *all activity* across every user and every market (`/admin/activity`, `/admin/users`, `/admin/markets`), plus the ability to resolve any market. All normal user-scoped endpoints remain available (`/users/{id}/account` for the three values, `/users/{id}/portfolio`, per-user observe, trades, etc.).
+- **Frontend (user level + admin)**: Top dropdown lets you switch any user and instantly see *exactly* what that user sees (cash balance, position value at current market prices, total account value, their portfolio, per-market positions, and trade as them). Admin tab shows global activity + resolve controls. Built around the 300-round bot demo (price drifts from 0.5 toward the true ~0.8; contrarian, random, LP etc. participate on both sides).
+
+**Easiest way to run (one command for backend + data)**
+
+```bash
+# Make executable once
+chmod +x start-professional-ui.sh
+
+# Run it (handles venv + install + seeds the 300-round demo into lmsr_demo.db + starts the backend)
+./start-professional-ui.sh
+```
+
+In a second terminal start the frontend:
+```bash
+cd frontend
+npm run dev
+```
+
+Open http://localhost:3000.
+
+- Use the top user dropdown to switch between the 300-round bot users (`bull`, `contrarian`, `bear` who buys No when price is high, boosted `random`, etc.) and see exactly what each one sees.
+- Switch to the Admin tab to see global activity across everyone and resolve markets.
+- In the Admin tab there is now a **Demo Scenarios** section at the top with a dropdown containing *every* curated demo from the Streamlit app (Balanced, Rug Pull, High-Activity, Long Trend, Full Teaching multi-market, Experts vs Punters, 300-round bots, ...). "Load Selected Scenario" (or "Reset (empty)") replaces the current DB state with that demo exactly as the Streamlit scenario buttons do.
+
+The script is the easiest on-ramp for collaborators. Everything uses the same persistent `lmsr_demo.db` as the rest of the project and has zero dependency on the Streamlit demo.
+
+See `examples/README.md` for the full "Professional Separate Frontend + Backend" section with manual steps and more details.
+
+### Professional Separate Frontend + Backend (completely independent of Streamlit)
+
+A full professional stack lives in `frontend/` (Next.js + React + TypeScript + Tailwind). This is a **separate UI entity** — do not touch or depend on the Streamlit demo (`app.py`).
+
+**What it provides**
+- **Backend (enhanced FastAPI)**: Admin views to see *all activity* across every user and every market, plus the ability to resolve any market. All the normal user-scoped endpoints (`/users/{id}/account` for the three values, `/users/{id}/portfolio`, per-user observe, trades, etc.) are still there so the frontend can show exactly what each user sees.
+- **Frontend (user level + admin)**: Top dropdown lets you switch any user and instantly see *exactly* what that user sees (cash balance, position value at current prices, total account value, their portfolio, per-market positions, and trade as them). Admin tab shows global activity feed + resolve controls. Designed around the 300-round bot demo (price drifts from 0.5 toward the true ~0.8; contrarian, random, LP, inventory etc. all participate on both sides).
+
+**Easiest way to run (one command for backend + data)**
+
+```bash
+# Make executable once
+chmod +x start-professional-ui.sh
+
+# Run it
+./start-professional-ui.sh
+```
+
+This script will:
+- Activate/create the project `.venv` and `pip install -e ".[api]"`.
+- Run `python examples/ui_300_round_bots.py` (300 interleaved rounds of the simple bots, populates `lmsr_demo.db` with many users like `bull`, `contrarian`, `bear` (who buys No when price is high), boosted random, etc.).
+- Start the FastAPI backend in the foreground (`lmsr serve`).
+
+**In a second terminal** start the frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open http://localhost:3000.
+
+- Use the top user dropdown to switch between the 300-round bot users and see exactly what each one "sees".
+- Switch to the Admin tab to see all activity and resolve markets. The Admin tab also exposes the full set of demo scenarios (dropdown + Load) so every curated scenario from the Streamlit "Quick Demo Scenarios" is available here too.
+- Backend must be on port 8000 (API docs at /docs).
+
+**Manual steps** (useful for development)
+
+```bash
+# Setup (once)
+source .venv/bin/activate || python -m venv .venv && source .venv/bin/activate
+pip install -e ".[api]"
+
+# Seed the rich 300-round unresolved demo (recommended)
+python examples/ui_300_round_bots.py
+
+# Start backend (one terminal)
+lmsr serve --reload
+# or
+uvicorn lmsr.api:app --reload --port 8000
+
+# Start frontend (another terminal)
+cd frontend
+npm run dev
+```
+
+Then open http://localhost:3000 as above.
+
+The bash script `start-professional-ui.sh` is the easiest on-ramp for collaborators. Everything is separate from Streamlit, uses the same persistent `lmsr_demo.db`, and gives you the full admin + per-user experience described in the roadmap.
 
 **Experiments & Parameter Studies**
 

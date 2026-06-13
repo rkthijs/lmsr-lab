@@ -190,7 +190,72 @@ This is the small entry point referenced in the project roadmap for replaying hi
 
 ## Bot & Automated Agent Examples
 
-See `examples/trading_agent.py` for a runnable demonstration of the high-level `TradingAgent` API (the recommended interface for RL agents, scripted bots, etc.). It covers fixed vs. adaptive `b`, ergonomic trading methods, quoting, portfolio inspection, and simple multi-agent strategies.
+This project now includes a growing collection of simple, reusable bot strategies built on top of the high-level `TradingAgent` API (recommended for RL agents, scripted bots, Kelly strategies, etc.).
+
+### Core Bot Implementations
+- `examples/simple_bots.py` — A clean library of the simplest bot archetypes:
+  - Random / Noise trader (baseline + liquidity)
+  - Threshold / Band trader
+  - Trend Follower (momentum)
+  - Contrarian / Mean Reversion (seeded initial position so it visibly sells when price is pushed high)
+  - Belief-based / Fundamental (Kelly-style, with `true_p`)
+  - Inventory / Probe bot (maintains a target position)
+  - Simple Liquidity Provider (buys the cheaper side to earn fees)
+
+  All are implemented as single-step functions so they are trivial to interleave on the same market.
+
+- `examples/interleaved_bots.py` — A focused, minimal example showing a trend follower and a contrarian running *interleaved* on one adaptive market (every round both get a turn). Demonstrates the three values (cash balance, position value/MTM, total account value) at every step.
+
+- `examples/trading_agent.py` — The original broader tour: fixed-b single-agent walkthrough, exact vs. partial round-trips, and a sequential multi-agent example. Updated to use the new bot helpers and the three-value accounting.
+
+- `examples/ui_300_round_bots.py` — A long-running (300 rounds) unresolved market populated by interleaved bots with a known true probability (p_yes ≈ 0.8) while the market starts mispriced at 0.5. The informed "bull" gradually pushes the price toward the true value; the seeded contrarian sells into the move; random noise, inventory, and LP add realistic volume. Leaves the market open — perfect for the Streamlit UI.
+
+### Running the Bot Examples
+```bash
+python examples/simple_bots.py          # See all archetypes interleaved on one market
+python examples/interleaved_bots.py     # Pure two-strategy interleaving demo
+python examples/trading_agent.py        # Original multi-part tour
+python examples/ui_300_round_bots.py    # 300-round unresolved demo (for UI seeding)
+```
+
+All of them emphasize:
+- The three account values users actually care about (cash, position value at current prices, total equity).
+- Integer shares only.
+- Clean Before/After reporting with costs and fees.
+- Using the b-recommendation tool (see the 🧮 expander in the Streamlit app) to choose plausible liquidity parameters instead of magic numbers.
+
+### Using in the Streamlit UI
+The long 300-round bot demo is now available as a one-click scenario:
+- Run the app: `python -m streamlit run app.py`
+- In the sidebar, open "🚀 Quick Demo Scenarios"
+- Click **"Long Bot Activity Demo (300 rounds, Open)"**
+
+This populates an unresolved market with real trade history, growing adaptive `b`, open positions across several "users", and accumulated MM fees — excellent for exploring the Portfolio tab, trade impact, and live price discovery.
+
+### Programmatic Usage
+```python
+from examples.simple_bots import (
+    trend_follower, mean_reversion, belief_trader,
+    random_trader, liquidity_provider
+)
+from src.lmsr import LMSRMarketSimulator, TradingAgent
+
+sim = LMSRMarketSimulator()
+m = sim.create_market("Demo", b=60, initial_subsidy=500)
+
+trend = TradingAgent(sim, "trend")
+meanr = TradingAgent(sim, "contrarian")
+bull  = TradingAgent(sim, "bull")
+
+for _ in range(50):
+    trend_follower(trend, m.id)
+    mean_reversion(meanr, m.id)
+    belief_trader(bull, m.id, true_p=0.82, size=5)
+
+print("Bull total value:", bull.get_total_value())
+```
+
+See the docstrings in `simple_bots.py` for parameter details on each strategy. The functions are intentionally tiny so you can copy-paste or compose them however you like.
 
 ## Command Line
 
@@ -222,5 +287,65 @@ sim = LMSRMarketSimulator(db_path="experiment_run.db")
 ```
 
 This is especially useful when you want to continue an experiment across multiple Python sessions or inspect the state with the `lmsr` CLI or the Streamlit demo later.
+
+## Professional Separate Frontend + Backend (completely independent of Streamlit)
+
+A full professional stack lives in `frontend/` (Next.js + React + TypeScript + Tailwind). This is a **separate UI entity** — do **not** touch or run the Streamlit demo (`app.py`) for this.
+
+### Easiest way for others (recommended)
+```bash
+# Make executable once
+chmod +x start-professional-ui.sh
+
+# Run it (handles venv, install, seeds the 300-round demo into lmsr_demo.db, then starts the backend)
+./start-professional-ui.sh
+```
+
+In a second terminal start the frontend:
+```bash
+cd frontend
+npm run dev
+```
+
+Open http://localhost:3000.
+
+- Top user dropdown lets you switch any of the 300-round bot users (`bull`, `contrarian`, `bear` (who buys No when price is high), boosted `random`, `inv`, `lp`, etc.) and instantly see *exactly* what that user sees (cash balance, position value at current prices, total account value, their portfolio, per-market positions, and trade as them).
+- Admin tab:
+  - Global activity across every user/market + controls to resolve any market.
+  - **Demo Scenarios** panel at the top: dropdown + "Load Selected Scenario" button. This gives you *all* the curated demos that exist in the Streamlit app (via the exact same `SCENARIO_REGISTRY` in `examples/demo_seeding.py`): Balanced Trading, Kelly Rug Pull (resolved), High-Activity Kelly, Very Long Gradual Trend, Full Teaching Demo (multi-market), Experts vs Punters, and the 300-round bot activity. "Reset (empty)" is also available. Loading a scenario fully replaces the DB state (markets, users, history, balances) just like the Streamlit scenario buttons.
+
+The backend uses the enhanced FastAPI admin endpoints (`/admin/activity`, `/admin/users`, `/admin/markets`, `/admin/.../resolve`) plus all normal user-scoped ones. CORS is enabled. The market is left unresolved with ~300 rounds of realistic bot activity (true p≈0.8, starts mispriced at 0.5, price drifts toward the true value, activity on both sides).
+
+### Manual steps
+```bash
+# Setup (once)
+source .venv/bin/activate || python -m venv .venv && source .venv/bin/activate
+pip install -e ".[api]"
+
+# Seed the rich 300-round unresolved demo (gives you the many bot users + history)
+python examples/ui_300_round_bots.py
+
+# Start backend (one terminal)
+lmsr serve --reload
+# or
+uvicorn lmsr.api:app --reload --port 8000
+
+# Start frontend (another terminal)
+cd frontend
+npm run dev
+```
+
+Then open http://localhost:3000 as above.
+
+### What the 300-round example provides
+- Informed "bull" (true_p=0.82) gradually buys Yes and pushes price from 0.5 toward ~0.8.
+- Seeded "contrarian" (mean-reversion) sells into the move.
+- Boosted random, inventory, LP, threshold, and a low-belief bear (who buys No when price is high) add realistic volume and positions on both sides.
+- Adaptive b grows, fees accumulate, lots of open interest.
+- Perfect for trying the new professional UI's user switcher and admin view.
+
+See the root `README.md` for the full "Professional Separate Frontend + Backend" section with the complete run instructions (the `start-professional-ui.sh` script is the easiest on-ramp for collaborators).
+
+Everything uses the same persistent `lmsr_demo.db` as the rest of the project and is completely separate from Streamlit (as requested).
 
 The demo / `lmsr serve` uses `lmsr_demo.db` by default so your work survives restarts. Use `db_path=":memory:"` in tests for isolation.

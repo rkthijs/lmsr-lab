@@ -39,6 +39,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .adaptive import BoundedB, LinearVolumeB
@@ -74,6 +75,11 @@ class TradeRequest(BaseModel):
 
 class ResolveRequest(BaseModel):
     outcome: Literal["yes", "no"]
+
+
+class ScenarioLoadRequest(BaseModel):
+    """Request to load one of the curated demo scenarios (same set as the Streamlit demo)."""
+    name: str = Field(..., description="Friendly name from get_available_scenarios(), e.g. 'Long Bot Activity Demo (300 rounds, Open)'")
 
 
 class MarketResponse(BaseModel):
@@ -131,6 +137,19 @@ app = FastAPI(
     description="FastAPI wrapper around LMSRMarketSimulator for bots, agents, and UIs.",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+# CORS for separate professional frontend (Next.js on :3000 by default)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",  # in case of port conflict
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -383,6 +402,115 @@ def set_b_strategy(market_id: str, strategy: StrategySpec):
     # (for fixed it will be the number; for adaptive it will be the strategy object)
     market.b = new_b
     return {"success": True, "current_b": market.current_b, "is_adaptive": market.is_adaptive_b}
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints (for the separate professional backend UI)
+# See all activity, global views, resolve any market. User-level views remain
+# available via the existing per-user endpoints (get_portfolio, get_account, observe, etc.).
+# The frontend can switch "current user" to see exactly what that user sees.
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/users")
+def admin_list_users():
+    """List all users with current balances and basic portfolio summary.
+    Allows the admin UI to see everyone.
+    """
+    sim = get_sim()
+    result = []
+    for user_id in list(sim.users.keys()):
+        try:
+            balance = sim.get_balance(user_id)
+            port = sim.get_user_portfolio(user_id)
+            result.append({
+                "user_id": user_id,
+                "balance": balance,
+                "open_markets": port.open_markets_count,
+                "resolved_markets": port.resolved_markets_count,
+                "realized_pnl": port.realized_pnl,
+            })
+        except Exception:
+            result.append({"user_id": user_id, "balance": balance, "error": "could not load portfolio"})
+    return result
+
+
+@app.get("/admin/markets")
+def admin_list_markets():
+    """Full list of all markets with details. For admin overview."""
+    sim = get_sim()
+    return [_market_to_response(m) for m in sim.list_markets(status=None)]
+
+
+@app.get("/admin/activity")
+def admin_activity(limit: int = 200):
+    """All (or recent) trade activity across all markets. For seeing everything."""
+    sim = get_sim()
+    all_trades = []
+    for m in sim.list_markets(status=None):
+        for t in m.trades:
+            all_trades.append({
+                "id": t.id,
+                "market_id": m.id,
+                "market_title": m.title,
+                "user_id": t.user_id,
+                "shares_yes": t.shares_yes,
+                "shares_no": t.shares_no,
+                "effective_cost": t.effective_cost,
+                "fee": t.fee,
+                "price_after_yes": t.price_after_yes,
+                "price_after_no": t.price_after_no,
+                "timestamp": t.timestamp.isoformat() if hasattr(t, "timestamp") else None,
+            })
+    # Most recent first
+    all_trades.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+    return all_trades[:limit]
+
+
+@app.post("/admin/markets/{market_id}/resolve")
+def admin_resolve_market(market_id: str, payload: ResolveRequest):
+    """Admin-only resolve endpoint. Allows resolving any market."""
+    sim = get_sim()
+    try:
+        result = sim.resolve_market(market_id, payload.outcome)
+    except Exception as e:
+        raise HTTPException(400, str(e)) from None
+    return result
+
+
+@app.get("/admin/scenarios")
+def list_scenarios():
+    """List all curated demo scenarios that can be loaded (same registry as the Streamlit app).
+    These match the 'Quick Demo Scenarios' available in app.py.
+    """
+    from examples.demo_seeding import get_available_scenarios
+    return {"scenarios": get_available_scenarios()}
+
+
+@app.post("/admin/scenarios/load")
+def load_scenario(payload: ScenarioLoadRequest):
+    """Load (and replace current state with) one of the curated demo scenarios.
+    This resets the simulator/DB first, then runs the seeder exactly like the
+    Streamlit "Quick Demo Scenarios" buttons do. All the demos from demo_seeding.py
+    become available in the professional UI.
+    """
+    sim = get_sim()
+    try:
+        from examples.demo_seeding import run_scenario, get_available_scenarios
+        if payload.name not in get_available_scenarios():
+            raise HTTPException(400, f"Unknown scenario. Available: {get_available_scenarios()}")
+        # Reset clears all state + the underlying SQLite DB (see simulator.reset + api /reset)
+        sim.reset()
+        result = run_scenario(sim, payload.name)
+        return {
+            "success": True,
+            "scenario": payload.name,
+            "result": result,
+            "message": f"Loaded scenario '{payload.name}'. State replaced.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Failed to load scenario '{payload.name}': {e}") from None
 
 
 # ---------------------------------------------------------------------------

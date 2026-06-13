@@ -113,7 +113,9 @@ def seed_long_bot_demo(sim: LMSRMarketSimulator) -> str:
 def main() -> None:
     print("=== UI 300-Round Bot Demo (unresolved market) ===\n")
 
-    sim = LMSRMarketSimulator()
+    # Use the same DB as the demo server so the populated state is visible
+    # when running `lmsr serve` or the professional frontend.
+    sim = LMSRMarketSimulator(db_path="lmsr_demo.db")
 
     mid = seed_long_bot_demo(sim)
     market = sim.get_market(mid)
@@ -149,14 +151,15 @@ def main() -> None:
             pv = agent.get_position_value(mid)
             total = agent.get_total_value()
             pos = [int(x) for x in agent.get_position(mid)]
-            print(f"{uid:8}  pos=[{pos[0]:5.0f},{pos[1]:5.0f}]  "
+            print(f"{uid:12}  pos=[{pos[0]:5.0f},{pos[1]:5.0f}]  "
                   f"cash={cash:8.2f}  pos_value={pv:7.2f}  total={total:8.2f}")
         except Exception:
             pass
 
     print("\nMarket is ready to be used in the UI (unresolved, lots of open interest).")
     print(f"Market id = {market.id}")
-    print("Run the Streamlit app — this scenario will appear in Quick Demo Scenarios.")
+    print("Users created in this run (from the 300 bot turns): random, thresh, trend, contrarian, bull, bear, inv, lp")
+    print("Run the professional frontend (see start-professional-ui.sh) to switch between them and see what each sees.")
 
 
 if __name__ == "__main__":
