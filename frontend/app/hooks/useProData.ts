@@ -360,8 +360,9 @@ export function useProData() {
       setModalTradeAmountNo(0);
       setModalQuote(null);
       await refreshCurrentMarketDetail();
-    } catch (e: any) {
-      setMessage('Modal trade error: ' + e.message);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setMessage('Modal trade error: ' + msg);
     }
   }, [selectedMarketId, modalTradeAmountYes, modalTradeAmountNo, doTrade, refreshCurrentMarketDetail]);
 

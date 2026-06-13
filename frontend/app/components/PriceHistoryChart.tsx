@@ -45,7 +45,7 @@ export default function PriceHistoryChart({ trades, onHover, hoveredIdx: externa
   const pathD = points.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ');
 
   const onMove = (evt: React.MouseEvent<SVGSVGElement>) => {
-    const rect = (evt.currentTarget as any).getBoundingClientRect();
+    const rect = evt.currentTarget.getBoundingClientRect();
     const mx = ((evt.clientX - rect.left) / rect.width) * W;
     let best = 0;
     let bestDist = Infinity;

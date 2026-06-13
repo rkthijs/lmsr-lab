@@ -190,7 +190,7 @@ These are expected — the deliberate focus was an excellent research simulator,
 - [ ] **Professional frontend**: Modern web UI (e.g. Next.js/React) over the API layer, keeping Python engine as source of truth. Streamlit remains the quick demo vehicle for now.
   - [x] #1: Monolith refactor — page.tsx is now thin orchestrator; logic centralized in `useProData` hook; extracted 4 components (Leaderboard, MarketCard, PriceHistoryChart, MarketModal) + `types.ts` (prep for stricter types).
   - [x] #2: Data fetching — adopted TanStack Query (`@tanstack/react-query`). All primary loads use `useQuery` (users, markets, activity, leaderboard with metric key, account/portfolio per-user, scenarios, modal marketDetail/trades). All mutating actions (trade, resolve, load scenario, reset) use `useMutation` + targeted `invalidateQueries` on success. Shared `apiFetch` (robust FastAPI error handling). `QueryClientProvider` via `providers.tsx` + layout. `useFetch` legacy kept but new code prefers `apiFetch`. Manual refresh buttons still work; auto refetch reduced. Build verified clean.
-  - [ ] #3: Type tightening (central types.ts in place; a few remaining `as any` casts in modal integration points in page.tsx can be cleaned next).
+  - [x] #3: Type tightening — removed all `(pro as any)` casts and fake `.fetchJson` in page.tsx modal integration by properly destructuring `refreshCurrentMarketDetail`, `loadAdminMarketPositions`, `updateModalQuote` + using real `setResolve*`/`doResolve` for onResolve. Fixed `modalQuote: QuoteResponse | null` in types (was `any`). Removed remaining loose `any` in catches, Trade maps, and SVG rect access (direct .getBoundingClientRect()). Pruned obsolete mount effects in page (data now RQ-driven). All builds clean with no TS errors.
 - [ ] **Bot / agent ergonomics**: Higher-level client or thin wrapper making it trivial for RL agents, Kelly bots, etc. to participate in markets.
 - [ ] **CLI**: Small entry point for common experiment tasks (replay histories with different b, batch scoring, etc.).
 - [ ] **JSON state**: Convenience (de)serialization for simulator state alongside pickle (easier sharing of experiment setups).
@@ -213,5 +213,5 @@ When an agent is unsure about requirements, math, or design choices:
 
 ---
 
-**Last updated**: 2026-06-13 (pro-ui #1 monolith refactor committed; #2 adopted TanStack Query for all pro UI data fetching + mutations; builds clean; docs + internal todo list updated).
+**Last updated**: 2026-06-13 (pro-ui #2 follow-up committed (TanStack Query); #3 type tightening done — all `as any` casts eliminated, types refined (QuoteResponse etc.), dead effects pruned, builds verified; AGENTS + todo list updated).
 **Maintainer note**: Treat this file as living documentation. Keep it concise but actionable. Update it whenever architecture, tooling, or scope meaningfully changes.

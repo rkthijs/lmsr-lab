@@ -29,21 +29,14 @@ export default function LMSRProfessionalUI() {
     openMarketView, closeMarketView,
     doModalTrade,
     doTrade, doResolve,
+    refreshCurrentMarketDetail,
+    loadAdminMarketPositions,
+    updateModalQuote,
     openMarkets, resolvedMarkets,
   } = pro;
 
-  // Effects that were in component - call from hook or here for tab
-  useEffect(() => {
-    refreshAll();
-    loadScenarios();
-  }, []);
-
-  useEffect(() => {
-    if (selectedUser) {
-      // loadUserData is internal to hook now
-    }
-  }, [selectedUser]);
-
+  // Tab switch effect: ensure admin data (scenarios, leaderboard) is fresh when entering Admin view.
+  // Core lists / user data / modal details are loaded automatically by TanStack Query (see useProData).
   useEffect(() => {
     if (activeTab === 'admin') {
       loadScenarios();
@@ -433,18 +426,17 @@ export default function LMSRProfessionalUI() {
           setResolveOutcome={setResolveOutcome}
           onClose={closeMarketView}
           onTrade={() => doModalTrade()}
-          onRefresh={async () => { await (pro as any).refreshCurrentMarketDetail?.(); }}
+          onRefresh={refreshCurrentMarketDetail}
           onResolve={async (mid, outcome) => {
-            await (pro as any).fetchJson?.(`/admin/markets/${mid}/resolve`, {
-              method: 'POST',
-              body: JSON.stringify({ outcome }),
-            });
+            setResolveMarketId(mid);
+            setResolveOutcome(outcome);
+            await doResolve();
             setMessage(`Resolved ${mid} to ${outcome} (admin).`);
-            await (pro as any).refreshCurrentMarketDetail?.();
+            await refreshCurrentMarketDetail();
             await refreshAll();
           }}
-          onLoadAdminPositions={(pro as any).loadAdminMarketPositions || (() => {})}
-          onUpdateQuote={(pro as any).updateModalQuote || (() => {})}
+          onLoadAdminPositions={loadAdminMarketPositions}
+          onUpdateQuote={updateModalQuote}
         />
 
         <div className="mt-12 text-xs text-zinc-500 border-t pt-6">

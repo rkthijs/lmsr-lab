@@ -97,5 +97,5 @@ export interface ModalState {
   hoveredTradeIdx: number | null;
   modalTradeAmountYes: number;
   modalTradeAmountNo: number;
-  modalQuote: any | null; // can refine later
+  modalQuote: QuoteResponse | null;
 }

@@ -162,7 +162,7 @@ export default function MarketModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
-                    {marketTrades.slice(-12).reverse().map((t: any, idx: number) => (
+                    {marketTrades.slice(-12).reverse().map((t: Trade, idx: number) => (
                       <tr key={idx} className="hover:bg-zinc-900/50">
                         <td className="p-2 pl-3 text-zinc-400 tabular-nums">{marketTrades.length - idx}</td>
                         <td className="p-2 font-medium">{t.user_id}</td>
@@ -284,8 +284,8 @@ export default function MarketModal({
                       try {
                         await onResolve(selectedMarketId, resolveOutcome);
                         await onRefresh();
-                      } catch (e: any) {
-                        // parent handles message
+                      } catch (e: unknown) {
+                        // parent handles message (via setMessage in onResolve wrapper)
                       }
                     }}
                     className="px-5 h-9 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-semibold"
