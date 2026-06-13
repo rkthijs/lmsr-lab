@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import PriceHistoryChart from './PriceHistoryChart';
 import { MarketDetail, Trade, LeaderboardMetric, QuoteResponse } from '../types';
 
@@ -59,6 +59,22 @@ export default function MarketModal({
   isLoadingMarketTrades = false,
   isLoadingPositions = false,
 }: MarketModalProps) {
+  // Local client-side sorting for the admin "Current Positions" table (matches Leaderboard + All Users UX)
+  const [posSortKey, setPosSortKey] = useState<'user' | 'yes' | 'no' | 'net'>('user');
+  const [posSortDir, setPosSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const togglePosSort = (key: typeof posSortKey) => {
+    if (posSortKey === key) {
+      setPosSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setPosSortKey(key);
+      setPosSortDir(key === 'user' ? 'asc' : 'desc');
+    }
+  };
+
+  const posSortIndicator = (key: typeof posSortKey) =>
+    posSortKey === key ? (posSortDir === 'asc' ? ' ↑' : ' ↓') : '';
+
   if (!selectedMarketId) return null;
 
   return (
@@ -333,30 +349,81 @@ export default function MarketModal({
                 ) : Object.keys(marketPositions).length === 0 ? (
                   <div className="text-xs text-zinc-400">No positions loaded (or no users in this demo).</div>
                 ) : (
-                  <div className="border border-zinc-800 rounded-xl overflow-hidden text-sm bg-zinc-950">
-                    <table className="w-full">
-                      <thead className="bg-zinc-900 text-xs text-zinc-400">
-                        <tr>
-                          <th className="text-left p-2 pl-3">User</th>
-                          <th className="text-right p-2">Yes</th>
-                          <th className="text-right p-2">No</th>
-                          <th className="text-right p-2 pr-3">Net</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-800">
-                        {Object.entries(marketPositions).map(([uid, pos]) => (
-                          <tr key={uid} className="hover:bg-zinc-900/60">
-                            <td className="p-2 pl-3 font-medium">{uid}</td>
-                            <td className="p-2 text-right text-emerald-300 tabular-nums">{pos.yes}</td>
-                            <td className="p-2 text-right text-red-300 tabular-nums">{pos.no}</td>
-                            <td className="p-2 pr-3 text-right text-zinc-400 tabular-nums">{pos.yes - pos.no}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  (() => {
+                    // Client-side sort (very small N)
+                    const entries = Object.entries(marketPositions);
+                    const sorted = [...entries].sort((a, b) => {
+                      const [ua, pa] = a;
+                      const [ub, pb] = b;
+                      let va: number | string;
+                      let vb: number | string;
+                      if (posSortKey === 'user') {
+                        va = ua;
+                        vb = ub;
+                      } else if (posSortKey === 'yes') {
+                        va = pa.yes;
+                        vb = pb.yes;
+                      } else if (posSortKey === 'no') {
+                        va = pa.no;
+                        vb = pb.no;
+                      } else {
+                        va = pa.yes - pa.no;
+                        vb = pb.yes - pb.no;
+                      }
+                      if (typeof va === 'string') {
+                        const cmp = va.localeCompare(vb as string);
+                        return posSortDir === 'asc' ? cmp : -cmp;
+                      }
+                      const cmp = (va as number) - (vb as number);
+                      return posSortDir === 'asc' ? cmp : -cmp;
+                    });
+                    return (
+                      <div className="max-h-44 overflow-auto border border-zinc-800 rounded-xl bg-zinc-950 text-sm">
+                        <table className="w-full">
+                          <thead className="bg-zinc-900 text-xs text-zinc-400 sticky top-0">
+                            <tr>
+                              <th
+                                className="text-left p-2 pl-3 cursor-pointer hover:bg-zinc-800 select-none"
+                                onClick={() => togglePosSort('user')}
+                              >
+                                User{posSortIndicator('user')}
+                              </th>
+                              <th
+                                className="text-right p-2 cursor-pointer hover:bg-zinc-800 select-none"
+                                onClick={() => togglePosSort('yes')}
+                              >
+                                Yes{posSortIndicator('yes')}
+                              </th>
+                              <th
+                                className="text-right p-2 cursor-pointer hover:bg-zinc-800 select-none"
+                                onClick={() => togglePosSort('no')}
+                              >
+                                No{posSortIndicator('no')}
+                              </th>
+                              <th
+                                className="text-right p-2 pr-3 cursor-pointer hover:bg-zinc-800 select-none"
+                                onClick={() => togglePosSort('net')}
+                              >
+                                Net{posSortIndicator('net')}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800">
+                            {sorted.map(([uid, pos]) => (
+                              <tr key={uid} className="hover:bg-zinc-900/60">
+                                <td className="p-2 pl-3 font-medium">{uid}</td>
+                                <td className="p-2 text-right text-emerald-300 tabular-nums">{pos.yes}</td>
+                                <td className="p-2 text-right text-red-300 tabular-nums">{pos.no}</td>
+                                <td className="p-2 pr-3 text-right text-zinc-400 tabular-nums">{pos.yes - pos.no}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()
                 )}
-                <div className="text-[10px] text-zinc-400 mt-1">Computed live via /observe per user. Updates when you refresh or trade.</div>
+                <div className="text-[10px] text-zinc-400 mt-1">Click column headers to sort. Computed live via /observe per user. Updates when you refresh or trade.</div>
               </div>
 
               <div className="text-xs text-amber-400/80">Tip: Global activity for this market is also visible in the main Admin “Recent Activity” table. You can also change b strategies via the API if needed.</div>
