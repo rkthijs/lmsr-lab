@@ -27,6 +27,9 @@ interface MarketModalProps {
   onResolve: (marketId: string, outcome: 'yes' | 'no') => Promise<void> | void;
   onLoadAdminPositions: (marketId: string) => void;
   onUpdateQuote: (yes: number, no: number) => void;
+  isLoadingMarketDetail?: boolean;
+  isLoadingMarketTrades?: boolean;
+  isLoadingPositions?: boolean;
 }
 
 export default function MarketModal({
@@ -52,6 +55,9 @@ export default function MarketModal({
   onResolve,
   onLoadAdminPositions,
   onUpdateQuote,
+  isLoadingMarketDetail = false,
+  isLoadingMarketTrades = false,
+  isLoadingPositions = false,
 }: MarketModalProps) {
   if (!selectedMarketId) return null;
 
@@ -90,19 +96,27 @@ export default function MarketModal({
 
         <div className="p-6 space-y-6">
           {/* Big current prices */}
-          {marketDetail && (
+          {(isLoadingMarketDetail || marketDetail) && (
             <div className="flex gap-3">
               <div className="flex-1 bg-zinc-900 border border-emerald-500/40 rounded-2xl p-4 text-center">
                 <div className="text-xs tracking-[2px] text-emerald-400 font-medium">YES</div>
-                <div className="text-5xl font-bold text-emerald-400 tabular-nums mt-1">
-                  {(marketDetail.current_prices?.[0] * 100 || 50).toFixed(1)}<span className="text-2xl align-super">¢</span>
-                </div>
+                {isLoadingMarketDetail ? (
+                  <div className="h-14 w-24 bg-zinc-800 animate-pulse rounded mx-auto mt-1" />
+                ) : (
+                  <div className="text-5xl font-bold text-emerald-400 tabular-nums mt-1">
+                    {((marketDetail?.current_prices?.[0] ?? 0.5) * 100).toFixed(1)}<span className="text-2xl align-super">¢</span>
+                  </div>
+                )}
               </div>
               <div className="flex-1 bg-zinc-900 border border-red-500/40 rounded-2xl p-4 text-center">
                 <div className="text-xs tracking-[2px] text-red-400 font-medium">NO</div>
-                <div className="text-5xl font-bold text-red-400 tabular-nums mt-1">
-                  {(marketDetail.current_prices?.[1] * 100 || 50).toFixed(1)}<span className="text-2xl align-super">¢</span>
-                </div>
+                {isLoadingMarketDetail ? (
+                  <div className="h-14 w-24 bg-zinc-800 animate-pulse rounded mx-auto mt-1" />
+                ) : (
+                  <div className="text-5xl font-bold text-red-400 tabular-nums mt-1">
+                    {((marketDetail?.current_prices?.[1] ?? 0.5) * 100).toFixed(1)}<span className="text-2xl align-super">¢</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -137,17 +151,29 @@ export default function MarketModal({
               <div className="text-xs text-zinc-400">Y-axis fixed 0 → 1.0 (like Streamlit TRADE tab)</div>
             </div>
 
-            <PriceHistoryChart
-              trades={marketTrades}
-              hoveredIdx={hoveredTradeIdx}
-              onHover={setHoveredTradeIdx}
-            />
+            {isLoadingMarketTrades ? (
+              <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-4 h-[240px] flex items-center justify-center">
+                <div className="w-full h-32 bg-zinc-800 animate-pulse rounded" />
+              </div>
+            ) : (
+              <PriceHistoryChart
+                trades={marketTrades}
+                hoveredIdx={hoveredTradeIdx}
+                onHover={setHoveredTradeIdx}
+              />
+            )}
           </div>
 
           {/* Recent trades table */}
           <div>
             <div className="font-semibold mb-2">Recent Trades</div>
-            {marketTrades.length === 0 ? (
+            {isLoadingMarketTrades && marketTrades.length === 0 ? (
+              <div className="max-h-44 overflow-auto border border-zinc-800 rounded-xl bg-zinc-950 text-sm p-2 space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-6 bg-zinc-800 animate-pulse rounded" />
+                ))}
+              </div>
+            ) : marketTrades.length === 0 ? (
               <div className="text-sm text-zinc-400">No trades recorded yet.</div>
             ) : (
               <div className="max-h-44 overflow-auto border border-zinc-800 rounded-xl bg-zinc-950 text-sm">
@@ -299,8 +325,12 @@ export default function MarketModal({
               {/* Positions */}
               <div>
                 <div className="text-sm font-medium mb-2">Current Positions on this market (all users)</div>
-                {Object.keys(marketPositions).length === 0 ? (
-                  <div className="text-xs text-zinc-400">Loading positions… (or no users)</div>
+                {(isLoadingPositions && Object.keys(marketPositions).length === 0) ? (
+                  <div className="border border-zinc-800 rounded-xl overflow-hidden text-sm bg-zinc-950 p-2 space-y-1">
+                    {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-5 bg-zinc-800 animate-pulse rounded" />)}
+                  </div>
+                ) : Object.keys(marketPositions).length === 0 ? (
+                  <div className="text-xs text-zinc-400">No positions loaded (or no users in this demo).</div>
                 ) : (
                   <div className="border border-zinc-800 rounded-xl overflow-hidden text-sm bg-zinc-950">
                     <table className="w-full">

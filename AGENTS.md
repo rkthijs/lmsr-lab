@@ -191,6 +191,11 @@ These are expected — the deliberate focus was an excellent research simulator,
   - [x] #1: Monolith refactor — page.tsx is now thin orchestrator; logic centralized in `useProData` hook; extracted 4 components (Leaderboard, MarketCard, PriceHistoryChart, MarketModal) + `types.ts` (prep for stricter types).
   - [x] #2: Data fetching — adopted TanStack Query (`@tanstack/react-query`). All primary loads use `useQuery` (users, markets, activity, leaderboard with metric key, account/portfolio per-user, scenarios, modal marketDetail/trades). All mutating actions (trade, resolve, load scenario, reset) use `useMutation` + targeted `invalidateQueries` on success. Shared `apiFetch` (robust FastAPI error handling). `QueryClientProvider` via `providers.tsx` + layout. `useFetch` legacy kept but new code prefers `apiFetch`. Manual refresh buttons still work; auto refetch reduced. Build verified clean.
   - [x] #3: Type tightening — removed all `(pro as any)` casts and fake `.fetchJson` in page.tsx modal integration by properly destructuring `refreshCurrentMarketDetail`, `loadAdminMarketPositions`, `updateModalQuote` + using real `setResolve*`/`doResolve` for onResolve. Fixed `modalQuote: QuoteResponse | null` in types (was `any`). Removed remaining loose `any` in catches, Trade maps, and SVG rect access (direct .getBoundingClientRect()). Pruned obsolete mount effects in page (data now RQ-driven). All builds clean with no TS errors.
+  - [x] #4: Polish UX — added loading states + skeletons powered by TanStack Query. Hook now exposes `isLoading`, `isLoadingAccount`, `isLoadingMarkets`, `isLoadingLeaderboard`, `isLoadingUsers`, `isLoadingActivity`, `isLoadingMarketDetail` etc. (granular). 
+    - User view: pulsing skeleton bars for the 3 account value cards, portfolio metrics, and placeholder cards in Active/Past markets grids while loading.
+    - Admin view: skeleton rows for users table + activity table, skeleton list items for markets list, improved loading for leaderboard (via prop) and scenarios. Refresh All button disables + shows "Refreshing…" while isLoading.
+    - Market modal: skeleton boxes for the large YES/NO price cards, pulsing placeholder for price history chart, skeleton rows for recent trades table, skeleton for admin cross-user positions table.
+    - Uses standard Tailwind `animate-pulse bg-zinc-800` (no new components/deps). Leverages RQ `isLoading` (initial) + existing data for smooth transitions. Builds clean.
 - [ ] **Bot / agent ergonomics**: Higher-level client or thin wrapper making it trivial for RL agents, Kelly bots, etc. to participate in markets.
 - [ ] **CLI**: Small entry point for common experiment tasks (replay histories with different b, batch scoring, etc.).
 - [ ] **JSON state**: Convenience (de)serialization for simulator state alongside pickle (easier sharing of experiment setups).
@@ -213,5 +218,5 @@ When an agent is unsure about requirements, math, or design choices:
 
 ---
 
-**Last updated**: 2026-06-13 (pro-ui #2 follow-up committed (TanStack Query); #3 type tightening done — all `as any` casts eliminated, types refined (QuoteResponse etc.), dead effects pruned, builds verified; AGENTS + todo list updated).
+**Last updated**: 2026-06-13 (pro-ui #4 UX polish complete: TanStack Query loading states + Tailwind skeletons across user/admin/modal views; #2 and #3 commits followed by this work; builds clean; docs updated).
 **Maintainer note**: Treat this file as living documentation. Keep it concise but actionable. Update it whenever architecture, tooling, or scope meaningfully changes.

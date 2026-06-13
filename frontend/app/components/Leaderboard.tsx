@@ -6,10 +6,11 @@ import { LeaderboardEntry, LeaderboardMetric } from '../types';
 interface LeaderboardProps {
   leaderboard: LeaderboardEntry[];
   metric: LeaderboardMetric;
+  loading?: boolean;
   onMetricChange: (m: LeaderboardMetric) => void;
 }
 
-export default function Leaderboard({ leaderboard, metric, onMetricChange }: LeaderboardProps) {
+export default function Leaderboard({ leaderboard, metric, loading = false, onMetricChange }: LeaderboardProps) {
   const metrics: LeaderboardMetric[] = ['brier', 'log', 'pnl'];
 
   return (
@@ -39,7 +40,15 @@ export default function Leaderboard({ leaderboard, metric, onMetricChange }: Lea
             </tr>
           </thead>
           <tbody>
-            {leaderboard.length === 0 ? (
+            {loading && leaderboard.length === 0 ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <tr key={i} className="border-t border-zinc-800">
+                  {Array.from({ length: metric === 'pnl' ? 4 : 5 }).map((__, j) => (
+                    <td key={j} className="p-3"><div className="h-3 bg-zinc-800 animate-pulse rounded" /></td>
+                  ))}
+                </tr>
+              ))
+            ) : leaderboard.length === 0 ? (
               <tr>
                 <td colSpan={metric === 'pnl' ? 4 : 5} className="p-3 text-zinc-400">
                   No resolved trades yet with scores. Load "Full Teaching Demo (Multi-Market)" or resolve some markets.

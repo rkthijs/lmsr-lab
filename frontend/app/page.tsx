@@ -32,6 +32,9 @@ export default function LMSRProfessionalUI() {
     refreshCurrentMarketDetail,
     loadAdminMarketPositions,
     updateModalQuote,
+    isLoading, isLoadingAccount, isLoadingPortfolio, isLoadingMarkets,
+    isLoadingUsers, isLoadingActivity, isLoadingScenarios, isLoadingLeaderboard,
+    isLoadingMarketDetail, isLoadingMarketTrades,
     openMarkets, resolvedMarkets,
   } = pro;
 
@@ -56,9 +59,10 @@ export default function LMSRProfessionalUI() {
             <div>Backend: <span className="font-mono text-emerald-400">{process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}</span></div>
             <button 
               onClick={refreshAll}
-              className="px-3 py-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-900 transition"
+              disabled={isLoading}
+              className="px-3 py-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-900 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Refresh All
+              {isLoading ? 'Refreshing…' : 'Refresh All'}
             </button>
             <a href="http://localhost:8000/docs" target="_blank" className="text-zinc-500 hover:text-zinc-300">API Docs →</a>
           </div>
@@ -123,21 +127,33 @@ export default function LMSRProfessionalUI() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-zinc-900 border border-emerald-500/30 rounded-2xl p-6">
                   <div className="text-xs uppercase tracking-[2px] text-emerald-400">Cash Balance</div>
-                  <div className="text-4xl font-semibold tabular-nums mt-1 text-emerald-400">
-                    {account ? account.cash_balance.toFixed(2) : '—'}
-                  </div>
+                  {isLoadingAccount ? (
+                    <div className="h-10 w-32 bg-zinc-800 animate-pulse rounded mt-1" />
+                  ) : (
+                    <div className="text-4xl font-semibold tabular-nums mt-1 text-emerald-400">
+                      {account ? account.cash_balance.toFixed(2) : '—'}
+                    </div>
+                  )}
                 </div>
                 <div className="bg-zinc-900 border border-blue-500/30 rounded-2xl p-6">
                   <div className="text-xs uppercase tracking-[2px] text-blue-400">Position Value (MTM)</div>
-                  <div className="text-4xl font-semibold tabular-nums mt-1 text-blue-400">
-                    {account ? account.position_value.toFixed(2) : '—'}
-                  </div>
+                  {isLoadingAccount ? (
+                    <div className="h-10 w-32 bg-zinc-800 animate-pulse rounded mt-1" />
+                  ) : (
+                    <div className="text-4xl font-semibold tabular-nums mt-1 text-blue-400">
+                      {account ? account.position_value.toFixed(2) : '—'}
+                    </div>
+                  )}
                 </div>
                 <div className="bg-zinc-900 border border-violet-500/30 rounded-2xl p-6">
                   <div className="text-xs uppercase tracking-[2px] text-violet-400">Total Account Value</div>
-                  <div className="text-4xl font-semibold tabular-nums mt-1 text-violet-400">
-                    {account ? account.total_value.toFixed(2) : '—'}
-                  </div>
+                  {isLoadingAccount ? (
+                    <div className="h-10 w-32 bg-zinc-800 animate-pulse rounded mt-1" />
+                  ) : (
+                    <div className="text-4xl font-semibold tabular-nums mt-1 text-violet-400">
+                      {account ? account.total_value.toFixed(2) : '—'}
+                    </div>
+                  )}
                   <div className="text-[10px] text-zinc-500 mt-1">Cash + current market value of your shares</div>
                 </div>
               </div>
@@ -147,16 +163,24 @@ export default function LMSRProfessionalUI() {
             </div>
 
             {/* Portfolio */}
-            {portfolio && (
+            {(isLoadingPortfolio || portfolio) && (
               <div>
                 <h2 className="text-xl font-semibold mb-3">Your Portfolio</h2>
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-sm">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-3">
-                    <div>Open markets: <span className="font-medium">{portfolio.open_markets_count}</span></div>
-                    <div>Resolved: <span className="font-medium">{portfolio.resolved_markets_count}</span></div>
-                    <div>Realized PnL: <span className="font-medium">{portfolio.realized_pnl.toFixed(2)}</span></div>
-                    <div>Total payouts received: <span className="font-medium">{portfolio.total_payouts_received.toFixed(2)}</span></div>
-                  </div>
+                  {isLoadingPortfolio ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-3">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="h-5 bg-zinc-800 animate-pulse rounded" />
+                      ))}
+                    </div>
+                  ) : portfolio ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-3">
+                      <div>Open markets: <span className="font-medium">{portfolio.open_markets_count}</span></div>
+                      <div>Resolved: <span className="font-medium">{portfolio.resolved_markets_count}</span></div>
+                      <div>Realized PnL: <span className="font-medium">{portfolio.realized_pnl.toFixed(2)}</span></div>
+                      <div>Total payouts received: <span className="font-medium">{portfolio.total_payouts_received.toFixed(2)}</span></div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -170,7 +194,23 @@ export default function LMSRProfessionalUI() {
                 Note: Buying No with zero balance is economically like selling Yes (net exposure), but they are separate instruments.
               </p>
               <div className="grid gap-4 md:grid-cols-2">
-                {openMarkets.length === 0 && (
+                {isLoadingMarkets && openMarkets.length === 0 && (
+                  Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="border border-zinc-800 bg-zinc-900 rounded-2xl p-4 space-y-3">
+                      <div className="h-5 w-3/4 bg-zinc-800 animate-pulse rounded" />
+                      <div className="flex gap-3">
+                        <div className="flex-1 h-8 bg-zinc-800 animate-pulse rounded" />
+                        <div className="flex-1 h-8 bg-zinc-800 animate-pulse rounded" />
+                      </div>
+                      <div className="h-4 w-1/2 bg-zinc-800 animate-pulse rounded" />
+                      <div className="flex gap-2">
+                        <div className="h-8 w-20 bg-zinc-800 animate-pulse rounded" />
+                        <div className="h-8 w-20 bg-zinc-800 animate-pulse rounded" />
+                      </div>
+                    </div>
+                  ))
+                )}
+                {openMarkets.length === 0 && !isLoadingMarkets && (
                   <div className="text-zinc-400 col-span-full">No active markets. Load a demo scenario (e.g. Full Teaching or 300-round) in the Admin tab.</div>
                 )}
                 {openMarkets.map(m => {
@@ -203,7 +243,16 @@ export default function LMSRProfessionalUI() {
                 Your realized PnL and payouts for these are reflected in the Portfolio section above.
               </p>
               <div className="grid gap-4 md:grid-cols-2">
-                {resolvedMarkets.length === 0 && (
+                {isLoadingMarkets && resolvedMarkets.length === 0 && (
+                  Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="border border-zinc-800 bg-zinc-900 rounded-2xl p-4 space-y-3">
+                      <div className="h-5 w-3/4 bg-zinc-800 animate-pulse rounded" />
+                      <div className="h-4 w-1/2 bg-zinc-800 animate-pulse rounded" />
+                      <div className="h-3 w-full bg-zinc-800 animate-pulse rounded" />
+                    </div>
+                  ))
+                )}
+                {resolvedMarkets.length === 0 && !isLoadingMarkets && (
                   <div className="text-zinc-400 col-span-full">No resolved markets yet. Load the "Full Teaching Demo (Multi-Market)" in the Admin tab to see examples.</div>
                 )}
                 {resolvedMarkets.map(m => {
@@ -284,7 +333,13 @@ export default function LMSRProfessionalUI() {
             <div>
               <h2 className="text-xl font-semibold mb-3">All Markets (click for Admin Market View)</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {markets.length === 0 && <div className="text-sm text-zinc-400">No markets loaded. Load a demo scenario above.</div>}
+                {isLoadingMarkets && markets.length === 0 && Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="border border-zinc-700 bg-zinc-900 rounded-2xl p-3">
+                    <div className="h-4 w-2/3 bg-zinc-800 animate-pulse rounded mb-1" />
+                    <div className="h-3 w-full bg-zinc-800 animate-pulse rounded" />
+                  </div>
+                ))}
+                {markets.length === 0 && !isLoadingMarkets && <div className="text-sm text-zinc-400">No markets loaded. Load a demo scenario above.</div>}
                 {markets.map(m => (
                   <div
                     key={m.id}
@@ -322,6 +377,14 @@ export default function LMSRProfessionalUI() {
                     </tr>
                   </thead>
                   <tbody>
+                    {isLoadingUsers && users.length === 0 && Array.from({ length: 3 }).map((_, i) => (
+                      <tr key={i} className="border-t border-zinc-800">
+                        <td className="p-4"><div className="h-4 w-16 bg-zinc-800 animate-pulse rounded" /></td>
+                        <td className="p-4 text-right"><div className="h-4 w-12 bg-zinc-800 animate-pulse rounded ml-auto" /></td>
+                        <td className="p-4 text-right"><div className="h-4 w-8 bg-zinc-800 animate-pulse rounded ml-auto" /></td>
+                        <td className="p-4 text-right"><div className="h-4 w-8 bg-zinc-800 animate-pulse rounded ml-auto" /></td>
+                      </tr>
+                    ))}
                     {users.map(u => (
                       <tr key={u.user_id} className="border-t border-zinc-800 hover:bg-zinc-900/50">
                         <td className="p-4 font-medium">{u.user_id}</td>
@@ -339,6 +402,7 @@ export default function LMSRProfessionalUI() {
             <Leaderboard
               leaderboard={leaderboard}
               metric={leaderboardMetric}
+              loading={isLoadingLeaderboard}
               onMetricChange={(m) => { setLeaderboardMetric(m); loadLeaderboard(m); }}
             />
 
@@ -358,6 +422,13 @@ export default function LMSRProfessionalUI() {
                     </tr>
                   </thead>
                   <tbody>
+                    {isLoadingActivity && activity.length === 0 && Array.from({ length: 4 }).map((_, i) => (
+                      <tr key={i} className="border-t border-zinc-800">
+                        {Array.from({ length: 7 }).map((__, j) => (
+                          <td key={j} className="p-3"><div className="h-3 bg-zinc-800 animate-pulse rounded" /></td>
+                        ))}
+                      </tr>
+                    ))}
                     {activity.slice(0, 50).map((a, i) => (
                       <tr key={i} className="border-t border-zinc-800 hover:bg-zinc-900/50">
                         <td className="p-3 text-xs text-zinc-500 tabular-nums">{a.timestamp?.slice(11,19) || '—'}</td>
@@ -437,6 +508,9 @@ export default function LMSRProfessionalUI() {
           }}
           onLoadAdminPositions={loadAdminMarketPositions}
           onUpdateQuote={updateModalQuote}
+          isLoadingMarketDetail={isLoadingMarketDetail}
+          isLoadingMarketTrades={isLoadingMarketTrades}
+          isLoadingPositions={activeTab === 'admin' && !!selectedMarketId}
         />
 
         <div className="mt-12 text-xs text-zinc-500 border-t pt-6">

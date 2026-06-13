@@ -370,6 +370,23 @@ export function useProData() {
   const openMarkets = markets.filter(m => m.status === 'open');
   const resolvedMarkets = markets.filter(m => m.status === 'resolved');
 
+  // === Loading states exposed from TanStack Query for UX polish (#4) ===
+  // These power skeletons and loading indicators in page + modal.
+  const isLoadingUsers = usersQuery.isLoading;
+  const isLoadingMarkets = marketsQuery.isLoading;
+  const isLoadingActivity = activityQuery.isLoading;
+  const isLoadingScenarios = scenariosQuery.isLoading;
+  const isLoadingLeaderboard = leaderboardQuery.isLoading;
+  const isLoadingAccount = accountQuery.isLoading;
+  const isLoadingPortfolio = portfolioQuery.isLoading;
+  const isLoadingMarketDetail = marketDetailQuery.isLoading;
+  const isLoadingMarketTrades = marketTradesQuery.isLoading;
+
+  // Overall + legacy compat (old `loading` was used in loadUserData)
+  const isLoading = isLoadingUsers || isLoadingMarkets || isLoadingAccount || isLoadingPortfolio || isLoadingLeaderboard || isLoadingScenarios || isLoadingMarketDetail || isLoadingMarketTrades;
+  // keep legacy loading in sync for any external consumers
+  // (we don't call setLoading anymore; this derived is authoritative)
+
   // === Effects: defaults, positions, errors, tab, keyboard, live quote ===
   useEffect(() => {
     if (users.length > 0) {
@@ -434,7 +451,9 @@ export function useProData() {
     // state + setters (query-backed data are readonly derived; setters for query data are no-ops)
     selectedUser, setSelectedUser,
     users, markets, activity, account, portfolio, userPositions,
-    loading, message, setMessage, activeTab, setActiveTab,
+    loading, isLoading, isLoadingUsers, isLoadingMarkets, isLoadingActivity, isLoadingScenarios,
+    isLoadingLeaderboard, isLoadingAccount, isLoadingPortfolio, isLoadingMarketDetail, isLoadingMarketTrades,
+    message, setMessage, activeTab, setActiveTab,
     tradeAmounts, setTradeAmounts,
     resolveMarketId, setResolveMarketId, resolveOutcome, setResolveOutcome,
     scenarios, setScenarios: () => {}, selectedScenario, setSelectedScenario,
