@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useFetch } from './useFetch';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from './useFetch';
 import {
   User,
   Market,
@@ -14,16 +15,10 @@ import {
 } from '../types';
 
 export function useProData() {
-  const { fetchData } = useFetch();
+  const queryClient = useQueryClient();
 
-  // All state
+  // === UI-only / transient state (not server-cached by RQ) ===
   const [selectedUser, setSelectedUser] = useState<string>('bull');
-  const [users, setUsers] = useState<User[]>([]);
-  const [markets, setMarkets] = useState<Market[]>([]);
-  const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [account, setAccount] = useState<Account | null>(null);
-  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [userPositions, setUserPositions] = useState<Record<string, { yes: number; no: number }>>({});
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user');
@@ -33,22 +28,71 @@ export function useProData() {
   const [resolveMarketId, setResolveMarketId] = useState('');
   const [resolveOutcome, setResolveOutcome] = useState<'yes' | 'no'>('yes');
 
-  const [scenarios, setScenarios] = useState<string[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
 
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardMetric, setLeaderboardMetric] = useState<LeaderboardMetric>('brier');
 
   const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
-  const [marketDetail, setMarketDetail] = useState<MarketDetail | null>(null);
-  const [marketTrades, setMarketTrades] = useState<Trade[]>([]);
-  const [marketPositions, setMarketPositions] = useState<Record<string, { yes: number; no: number }>>({});
   const [hoveredTradeIdx, setHoveredTradeIdx] = useState<number | null>(null);
   const [modalTradeAmountYes, setModalTradeAmountYes] = useState(0);
   const [modalTradeAmountNo, setModalTradeAmountNo] = useState(0);
   const [modalQuote, setModalQuote] = useState<QuoteResponse | null>(null);
 
-  // Helper getters/setters for trade amounts
+  // Modal-specific local state (synced from queries below)
+  const [marketTrades, setMarketTrades] = useState<Trade[]>([]);
+  const [marketPositions, setMarketPositions] = useState<Record<string, { yes: number; no: number }>>({});
+
+  // === React Query backed data ===
+  const usersQuery = useQuery<User[]>({
+    queryKey: ['users'],
+    queryFn: () => apiFetch<User[]>('/admin/users'),
+  });
+
+  const marketsQuery = useQuery<Market[]>({
+    queryKey: ['markets'],
+    queryFn: () => apiFetch<Market[]>('/admin/markets'),
+  });
+
+  const activityQuery = useQuery<ActivityItem[]>({
+    queryKey: ['activity'],
+    queryFn: () => apiFetch<ActivityItem[]>('/admin/activity?limit=100'),
+  });
+
+  const scenariosQuery = useQuery<{ scenarios?: string[]; error?: string }>({
+    queryKey: ['scenarios'],
+    queryFn: () => apiFetch('/admin/scenarios'),
+  });
+
+  const leaderboardQuery = useQuery<LeaderboardEntry[]>({
+    queryKey: ['leaderboard', leaderboardMetric],
+    queryFn: () => apiFetch<LeaderboardEntry[]>(`/leaderboard?metric=${leaderboardMetric}&min_resolved_trades=1`),
+  });
+
+  const accountQuery = useQuery<Account | null>({
+    queryKey: ['account', selectedUser],
+    enabled: !!selectedUser,
+    queryFn: () => apiFetch<Account>(`/users/${selectedUser}/account`),
+  });
+
+  const portfolioQuery = useQuery<Portfolio | null>({
+    queryKey: ['portfolio', selectedUser],
+    enabled: !!selectedUser,
+    queryFn: () => apiFetch<Portfolio>(`/users/${selectedUser}/portfolio`),
+  });
+
+  // Derived (stable for page/components)
+  const users = usersQuery.data ?? [];
+  const markets = marketsQuery.data ?? [];
+  const activity = activityQuery.data ?? [];
+  const leaderboard = leaderboardQuery.data ?? [];
+  const account = accountQuery.data ?? null;
+  const portfolio = portfolioQuery.data ?? null;
+
+  const [userPositions, setUserPositions] = useState<Record<string, { yes: number; no: number }>>({});
+
+  const scenarios: string[] = scenariosQuery.data?.scenarios || [];
+
+  // === Trade amount helpers (unchanged API) ===
   const getTradeAmount = useCallback((marketId: string, side: 'yes' | 'no') => {
     return tradeAmounts[marketId]?.[side] || 0;
   }, [tradeAmounts]);
@@ -63,165 +107,200 @@ export function useProData() {
     }));
   }, []);
 
-  // Load functions
-  const loadUsers = useCallback(async () => {
-    try {
-      const data = await fetchData<User[]>('/admin/users');
-      setUsers(data);
-      if (data.length > 0) {
-        const preferred = ['bull', 'contrarian', 'trend', 'random'];
-        const foundPreferred = preferred.find(p => data.some(u => u.user_id === p));
-        if (foundPreferred && !data.find(u => u.user_id === selectedUser)) {
-          setSelectedUser(foundPreferred);
-        } else if (!data.find(u => u.user_id === selectedUser)) {
-          setSelectedUser(data[0].user_id);
-        }
+  // === Positions (small N observe calls; manual but uses shared apiFetch) ===
+  const loadUserPositions = useCallback(async (userId: string, mList: Market[]) => {
+    const posMap: Record<string, { yes: number; no: number }> = {};
+    await Promise.all(mList.map(async (m) => {
+      try {
+        const obs = await apiFetch<{ position: { yes: number; no: number } }>(`/markets/${m.id}/observe?user_id=${userId}`);
+        posMap[m.id] = obs.position;
+      } catch {
+        posMap[m.id] = { yes: 0, no: 0 };
       }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setMessage('Failed to load users: ' + msg + '. Is the backend running on :8000?');
-    }
-  }, [selectedUser, fetchData]);
+    }));
+    setUserPositions(posMap);
+  }, []);
 
-  const loadMarkets = useCallback(async () => {
-    try {
-      const data = await fetchData<Market[]>('/admin/markets');
-      setMarkets(data);
-    } catch (e: unknown) {
-      console.error(e);
-    }
-  }, [fetchData]);
-
-  const loadActivity = useCallback(async () => {
-    try {
-      const data = await fetchData<ActivityItem[]>('/admin/activity?limit=100');
-      setActivity(data);
-    } catch (e: unknown) {
-      console.error(e);
-    }
-  }, [fetchData]);
-
-  const loadUserData = useCallback(async (userId: string) => {
-    setLoading(true);
-    setMessage('');
-    try {
-      const [acc, port] = await Promise.all([
-        fetchData<Account>(`/users/${userId}/account`),
-        fetchData<Portfolio>(`/users/${userId}/portfolio`),
-      ]);
-      setAccount(acc);
-      setPortfolio(port);
-
-      const posMap: Record<string, { yes: number; no: number }> = {};
-      for (const m of markets) {
-        try {
-          const obs = await fetchData<{ position: { yes: number; no: number } }>(`/markets/${m.id}/observe?user_id=${userId}`);
-          posMap[m.id] = obs.position;
-        } catch {}
-      }
-      setUserPositions(posMap);
-    } catch (e: any) {
-      setMessage('Failed to load user data: ' + e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [markets, fetchData]);
+  // === Invalidation + refresh ===
+  const invalidateCore = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['users'] });
+    queryClient.invalidateQueries({ queryKey: ['markets'] });
+    queryClient.invalidateQueries({ queryKey: ['activity'] });
+    queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
+  }, [queryClient]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadUsers(), loadMarkets(), loadActivity()]);
-    if (selectedUser) await loadUserData(selectedUser);
-    await loadLeaderboard(leaderboardMetric);
-  }, [loadUsers, loadMarkets, loadActivity, loadUserData, selectedUser, leaderboardMetric]);
-
-  const loadScenarios = useCallback(async () => {
-    try {
-      const data = await fetchData<{ scenarios?: string[]; error?: string }>('/admin/scenarios');
-      const list: string[] = data.scenarios || [];
-      setScenarios(list);
-      if (list.length > 0 && !selectedScenario) {
-        const preferred = list.find(s => s.includes('300') || s.includes('Bot')) || list[0];
-        setSelectedScenario(preferred);
-      }
-      if (data.error) {
-        setMessage('Scenarios failed to load: ' + data.error);
-      }
-    } catch (e: any) {
-      setScenarios([]);
-      setMessage('Failed to load scenario list (check backend logs / is examples/ importable?): ' + e.message);
+    invalidateCore();
+    if (selectedUser) {
+      queryClient.invalidateQueries({ queryKey: ['account', selectedUser] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio', selectedUser] });
     }
-  }, [selectedScenario, fetchData]);
+  }, [invalidateCore, selectedUser, queryClient]);
 
-  const loadLeaderboard = useCallback(async (metric: LeaderboardMetric = leaderboardMetric) => {
-    try {
-      const data: LeaderboardEntry[] = await fetchData(`/leaderboard?metric=${metric}&min_resolved_trades=1`);
-      setLeaderboard(data || []);
-    } catch (e: any) {
-      console.error(e);
-      setLeaderboard([]);
-    }
-  }, [fetchData, leaderboardMetric]);
+  const loadScenarios = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['scenarios'] });
+  }, [queryClient]);
+
+  const loadLeaderboard = useCallback((metric: LeaderboardMetric = leaderboardMetric) => {
+    if (metric !== leaderboardMetric) setLeaderboardMetric(metric);
+    queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
+  }, [queryClient, leaderboardMetric]);
+
+  // === Mutations (POSTs that change server state) ===
+  const tradeMutation = useMutation({
+    mutationFn: async (vars: { marketId: string; yesDelta: number; noDelta: number }) => {
+      return apiFetch<{ error?: string; cost?: number; fee?: number }>(`/markets/${vars.marketId}/trades`, {
+        method: 'POST',
+        body: JSON.stringify({ user_id: selectedUser, shares_yes: vars.yesDelta, shares_no: vars.noDelta }),
+      });
+    },
+    onSuccess: (res, vars) => {
+      if (res.error) {
+        setMessage(`Trade failed: ${res.error}`);
+      } else {
+        setMessage(`Trade executed. Cost: ${res.cost?.toFixed(2)} (fee ${res.fee?.toFixed(2) || '0.00'})`);
+        setTradeAmounts(prev => ({ ...prev, [vars.marketId]: { yes: 0, no: 0 } }));
+        invalidateCore();
+        queryClient.invalidateQueries({ queryKey: ['account', selectedUser] });
+        queryClient.invalidateQueries({ queryKey: ['portfolio', selectedUser] });
+        if (selectedMarketId === vars.marketId) {
+          queryClient.invalidateQueries({ queryKey: ['marketDetail', selectedMarketId] });
+          queryClient.invalidateQueries({ queryKey: ['marketTrades', selectedMarketId] });
+        }
+      }
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setMessage('Trade error: ' + msg);
+    },
+  });
+
+  const doTrade = useCallback(async (marketId: string, yesDelta: number, noDelta: number) => {
+    if (yesDelta === 0 && noDelta === 0) return;
+    setMessage('');
+    tradeMutation.mutate({ marketId, yesDelta, noDelta });
+  }, [tradeMutation]);
+
+  const resolveMutation = useMutation({
+    mutationFn: async (vars: { marketId: string; outcome: 'yes' | 'no' }) => {
+      return apiFetch<{ error?: string }>(`/admin/markets/${vars.marketId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ outcome: vars.outcome }),
+      });
+    },
+    onSuccess: (_res, vars) => {
+      setMessage(`Market ${vars.marketId} resolved to ${vars.outcome}.`);
+      invalidateCore();
+      queryClient.invalidateQueries({ queryKey: ['account', selectedUser] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio', selectedUser] });
+      if (selectedMarketId === vars.marketId) {
+        queryClient.invalidateQueries({ queryKey: ['marketDetail', selectedMarketId] });
+        queryClient.invalidateQueries({ queryKey: ['marketTrades', selectedMarketId] });
+      }
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setMessage('Resolve error: ' + msg);
+    },
+  });
+
+  const doResolve = useCallback(async () => {
+    if (!resolveMarketId) return;
+    setMessage('');
+    resolveMutation.mutate({ marketId: resolveMarketId, outcome: resolveOutcome });
+  }, [resolveMarketId, resolveOutcome, resolveMutation]);
+
+  const loadScenarioMutation = useMutation({
+    mutationFn: async (name: string) => {
+      return apiFetch<{ message?: string }>('/admin/scenarios/load', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+    },
+    onSuccess: (res, name) => {
+      setMessage(res.message || `Loaded scenario: ${name}`);
+      closeMarketView();
+      invalidateCore();
+      queryClient.invalidateQueries({ queryKey: ['account', selectedUser] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio', selectedUser] });
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setMessage('Load scenario failed: ' + msg);
+    },
+  });
 
   const loadSelectedScenario = useCallback(async () => {
     if (!selectedScenario) return;
     setMessage('Loading demo scenario...');
-    try {
-      const res = await fetchData<{ message?: string }>('/admin/scenarios/load', {
-        method: 'POST',
-        body: JSON.stringify({ name: selectedScenario }),
-      });
-      setMessage(res.message || `Loaded scenario: ${selectedScenario}`);
+    loadScenarioMutation.mutate(selectedScenario);
+  }, [selectedScenario, loadScenarioMutation]);
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      return apiFetch('/reset', { method: 'POST' });
+    },
+    onSuccess: () => {
+      setMessage('Simulator reset to empty state.');
+      invalidateCore();
+      queryClient.invalidateQueries({ queryKey: ['account', selectedUser] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio', selectedUser] });
+      setUserPositions({});
       closeMarketView();
-      await refreshAll();
-    } catch (e: any) {
-      setMessage('Load scenario failed: ' + e.message);
-    }
-  }, [selectedScenario, refreshAll]);
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setMessage('Reset failed: ' + msg);
+    },
+  });
 
   const resetSimulator = useCallback(async () => {
     setMessage('Resetting simulator...');
-    try {
-      await fetchData('/reset', { method: 'POST' });
-      setMessage('Simulator reset to empty state.');
-      await refreshAll();
-    } catch (e: any) {
-      setMessage('Reset failed: ' + e.message);
-    }
-  }, [refreshAll]);
+    resetMutation.mutate();
+  }, [resetMutation]);
 
-  // Market detail helpers
-  const loadMarketTrades = useCallback(async (marketId: string) => {
-    try {
-      const trades = await fetchData<Trade[]>(`/markets/${marketId}/trades`);
-      setMarketTrades(Array.isArray(trades) ? trades : []);
-    } catch (e: any) {
-      setMarketTrades([]);
-    }
-  }, [fetchData]);
+  // === Modal-specific queries (auto-fetch when selectedMarketId changes) ===
+  const marketDetailQuery = useQuery<MarketDetail | null>({
+    queryKey: ['marketDetail', selectedMarketId, activeTab],
+    enabled: !!selectedMarketId,
+    queryFn: () => {
+      if (!selectedMarketId) return Promise.resolve(null as MarketDetail | null);
+      const path = activeTab === 'admin' ? `/admin/markets/${selectedMarketId}` : `/markets/${selectedMarketId}`;
+      return apiFetch<MarketDetail>(path);
+    },
+  });
 
-  const loadMarketDetail = useCallback(async (marketId: string) => {
-    try {
-      const path = activeTab === 'admin' ? `/admin/markets/${marketId}` : `/markets/${marketId}`;
-      const m = await fetchData<MarketDetail>(path);
-      setMarketDetail(m);
-    } catch (e: any) {
-      setMarketDetail(null);
-    }
-  }, [activeTab, fetchData]);
+  const marketTradesQuery = useQuery<Trade[]>({
+    queryKey: ['marketTrades', selectedMarketId],
+    enabled: !!selectedMarketId,
+    queryFn: () => {
+      if (!selectedMarketId) return Promise.resolve([]);
+      return apiFetch<Trade[]>(`/markets/${selectedMarketId}/trades`);
+    },
+  });
 
+  useEffect(() => {
+    setMarketTrades(marketTradesQuery.data ?? []);
+  }, [marketTradesQuery.data]);
+
+  const marketDetail = marketDetailQuery.data ?? null;
+
+  // === Admin cross-user positions (small, on-demand) ===
   const loadAdminMarketPositions = useCallback(async (marketId: string) => {
     if (users.length === 0) return;
     const posMap: Record<string, { yes: number; no: number }> = {};
     await Promise.all(users.map(async (u) => {
       try {
-        const obs = await fetchData<{ position: { yes: number; no: number } }>(`/markets/${marketId}/observe?user_id=${u.user_id}`);
+        const obs = await apiFetch<{ position: { yes: number; no: number } }>(`/markets/${marketId}/observe?user_id=${u.user_id}`);
         posMap[u.user_id] = obs.position || { yes: 0, no: 0 };
       } catch {
         posMap[u.user_id] = { yes: 0, no: 0 };
       }
     }));
     setMarketPositions(posMap);
-  }, [users, fetchData]);
+  }, [users]);
 
+  // === Modal open/close (setting id enables the queries above) ===
   const openMarketView = useCallback(async (marketId: string) => {
     setSelectedMarketId(marketId);
     setHoveredTradeIdx(null);
@@ -230,19 +309,13 @@ export function useProData() {
     setModalQuote(null);
     setMarketPositions({});
 
-    await Promise.all([
-      loadMarketDetail(marketId),
-      loadMarketTrades(marketId),
-    ]);
-
     if (activeTab === 'admin') {
-      await loadAdminMarketPositions(marketId);
+      loadAdminMarketPositions(marketId);
     }
-  }, [loadMarketDetail, loadMarketTrades, loadAdminMarketPositions, activeTab]);
+  }, [activeTab, loadAdminMarketPositions]);
 
   const closeMarketView = useCallback(() => {
     setSelectedMarketId(null);
-    setMarketDetail(null);
     setMarketTrades([]);
     setMarketPositions({});
     setHoveredTradeIdx(null);
@@ -253,14 +326,12 @@ export function useProData() {
 
   const refreshCurrentMarketDetail = useCallback(async () => {
     if (!selectedMarketId) return;
-    await Promise.all([
-      loadMarketDetail(selectedMarketId),
-      loadMarketTrades(selectedMarketId),
-    ]);
+    queryClient.invalidateQueries({ queryKey: ['marketDetail', selectedMarketId, activeTab] });
+    queryClient.invalidateQueries({ queryKey: ['marketTrades', selectedMarketId] });
     if (activeTab === 'admin') {
       await loadAdminMarketPositions(selectedMarketId);
     }
-  }, [selectedMarketId, loadMarketDetail, loadMarketTrades, loadAdminMarketPositions, activeTab]);
+  }, [selectedMarketId, activeTab, queryClient, loadAdminMarketPositions]);
 
   const updateModalQuote = useCallback(async (yesDelta: number, noDelta: number) => {
     if (!selectedMarketId) return;
@@ -269,14 +340,14 @@ export function useProData() {
       return;
     }
     try {
-      const q = await fetchData<import('../types').QuoteResponse>(
+      const q = await apiFetch<QuoteResponse>(
         `/markets/${selectedMarketId}/quote?shares_yes=${yesDelta}&shares_no=${noDelta}`
       );
       setModalQuote(q);
     } catch {
       setModalQuote(null);
     }
-  }, [selectedMarketId, fetchData]);
+  }, [selectedMarketId]);
 
   const doModalTrade = useCallback(async () => {
     if (!selectedMarketId) return;
@@ -292,86 +363,64 @@ export function useProData() {
     } catch (e: any) {
       setMessage('Modal trade error: ' + e.message);
     }
-  }, [selectedMarketId, modalTradeAmountYes, modalTradeAmountNo, refreshCurrentMarketDetail]);
+  }, [selectedMarketId, modalTradeAmountYes, modalTradeAmountNo, doTrade, refreshCurrentMarketDetail]);
 
-  // Main doTrade
-  const doTrade = useCallback(async (marketId: string, yesDelta: number, noDelta: number) => {
-    if (yesDelta === 0 && noDelta === 0) return;
-    setMessage('');
-    try {
-      const res = await fetchData<{ error?: string; cost?: number; fee?: number }>(`/markets/${marketId}/trades`, {
-        method: 'POST',
-        body: JSON.stringify({
-          user_id: selectedUser,
-          shares_yes: yesDelta,
-          shares_no: noDelta,
-        }),
-      });
-      if (res.error) {
-        setMessage(`Trade failed: ${res.error}`);
-      } else {
-        setMessage(`Trade executed. Cost: ${res.cost?.toFixed(2)} (fee ${res.fee?.toFixed(2) || '0.00'})`);
-        setTradeAmounts(prev => ({ ...prev, [marketId]: { yes: 0, no: 0 } }));
-        await refreshAll();
-        if (selectedMarketId === marketId) {
-          await refreshCurrentMarketDetail();
-        }
-      }
-    } catch (e: any) {
-      setMessage('Trade error: ' + e.message);
-    }
-  }, [selectedUser, refreshAll, selectedMarketId, refreshCurrentMarketDetail]);
-
-  const doResolve = useCallback(async () => {
-    if (!resolveMarketId) return;
-    setMessage('');
-    try {
-      const res = await fetchData<{ error?: string }>(`/admin/markets/${resolveMarketId}/resolve`, {
-        method: 'POST',
-        body: JSON.stringify({ outcome: resolveOutcome }),
-      });
-      setMessage(`Market ${resolveMarketId} resolved to ${resolveOutcome}.`);
-      await refreshAll();
-      if (selectedMarketId === resolveMarketId) {
-        await refreshCurrentMarketDetail();
-      }
-    } catch (e: any) {
-      setMessage('Resolve error: ' + e.message);
-    }
-  }, [resolveMarketId, resolveOutcome, refreshAll, selectedMarketId, refreshCurrentMarketDetail]);
-
-  // Computed
+  // === Computed (same as before) ===
   const openMarkets = markets.filter(m => m.status === 'open');
   const resolvedMarkets = markets.filter(m => m.status === 'resolved');
 
-  // Effects
+  // === Effects: defaults, positions, errors, tab, keyboard, live quote ===
   useEffect(() => {
-    refreshAll();
-    loadScenarios();
-  }, []);
+    if (users.length > 0) {
+      const preferred = ['bull', 'contrarian', 'trend', 'random'];
+      const foundPreferred = preferred.find(p => users.some(u => u.user_id === p));
+      if (foundPreferred && !users.find(u => u.user_id === selectedUser)) {
+        setSelectedUser(foundPreferred);
+      } else if (!users.find(u => u.user_id === selectedUser)) {
+        setSelectedUser(users[0].user_id);
+      }
+    }
+  }, [users, selectedUser]);
 
   useEffect(() => {
-    if (selectedUser) {
-      loadUserData(selectedUser);
+    if (selectedUser && markets.length > 0) {
+      loadUserPositions(selectedUser, markets);
     }
-  }, [selectedUser, markets]);
+  }, [selectedUser, markets, loadUserPositions]);
+
+  useEffect(() => {
+    if (scenarios.length > 0 && !selectedScenario) {
+      const preferred = scenarios.find(s => s.includes('300') || s.includes('Bot')) || scenarios[0];
+      setSelectedScenario(preferred);
+    }
+    if (scenariosQuery.data?.error) {
+      setMessage('Scenarios failed to load: ' + scenariosQuery.data.error);
+    }
+  }, [scenarios, selectedScenario, scenariosQuery.data]);
+
+  useEffect(() => {
+    if (usersQuery.error) {
+      const msg = usersQuery.error instanceof Error ? usersQuery.error.message : String(usersQuery.error);
+      setMessage('Failed to load users: ' + msg + '. Is the backend running on :8000?');
+    }
+  }, [usersQuery.error]);
 
   useEffect(() => {
     if (activeTab === 'admin') {
-      loadScenarios();
-      loadLeaderboard(leaderboardMetric);
+      queryClient.invalidateQueries({ queryKey: ['scenarios'] });
+      queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
     }
-  }, [activeTab, leaderboardMetric]);
+  }, [activeTab, queryClient]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape' && selectedMarketId) {
-        // closeMarketView is defined below, but for hook we can expose
+        closeMarketView();
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedMarketId]);
+  }, [selectedMarketId, closeMarketView]);
 
   useEffect(() => {
     if (selectedMarketId) {
@@ -379,32 +428,18 @@ export function useProData() {
     }
   }, [modalTradeAmountYes, modalTradeAmountNo, selectedMarketId, updateModalQuote]);
 
-  // Expose close for key, but since effect is here, we can move close logic
-  const closeMarketViewHook = useCallback(() => {
-    setSelectedMarketId(null);
-    setMarketDetail(null);
-    setMarketTrades([]);
-    setMarketPositions({});
-    setHoveredTradeIdx(null);
-    setModalTradeAmountYes(0);
-    setModalTradeAmountNo(0);
-    setModalQuote(null);
-  }, []);
-
-  // Update the key effect to use local
-  // (in real, effects would use the exposed close)
-
+  // Return shape is intentionally compatible with prior version (page/components unchanged)
   return {
-    // all state and setters
+    // state + setters (query-backed data are readonly derived; setters for query data are no-ops)
     selectedUser, setSelectedUser,
     users, markets, activity, account, portfolio, userPositions,
     loading, message, setMessage, activeTab, setActiveTab,
     tradeAmounts, setTradeAmounts,
     resolveMarketId, setResolveMarketId, resolveOutcome, setResolveOutcome,
-    scenarios, setScenarios, selectedScenario, setSelectedScenario,
-    leaderboard, setLeaderboard, leaderboardMetric, setLeaderboardMetric,
+    scenarios, setScenarios: () => {}, selectedScenario, setSelectedScenario,
+    leaderboard, setLeaderboard: () => {}, leaderboardMetric, setLeaderboardMetric,
     selectedMarketId, setSelectedMarketId,
-    marketDetail, setMarketDetail,
+    marketDetail, setMarketDetail: () => {},
     marketTrades, setMarketTrades,
     marketPositions, setMarketPositions,
     hoveredTradeIdx, setHoveredTradeIdx,
@@ -412,15 +447,34 @@ export function useProData() {
     modalTradeAmountNo, setModalTradeAmountNo,
     modalQuote, setModalQuote,
 
-    // functions
+    // functions (many now delegate to RQ invalidation / mutations)
     getTradeAmount,
     setTradeAmount,
-    loadUsers, loadMarkets, loadActivity, loadUserData, refreshAll,
-    loadScenarios, loadLeaderboard, loadSelectedScenario, resetSimulator,
-    loadMarketTrades, loadMarketDetail, loadAdminMarketPositions,
-    openMarketView, closeMarketView: closeMarketViewHook,
-    refreshCurrentMarketDetail, updateModalQuote, doModalTrade,
-    doTrade, doResolve,
+    loadUsers: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); },
+    loadMarkets: () => { queryClient.invalidateQueries({ queryKey: ['markets'] }); },
+    loadActivity: () => { queryClient.invalidateQueries({ queryKey: ['activity'] }); },
+    loadUserData: (userId?: string) => {
+      const uid = userId || selectedUser;
+      if (uid) {
+        queryClient.invalidateQueries({ queryKey: ['account', uid] });
+        queryClient.invalidateQueries({ queryKey: ['portfolio', uid] });
+      }
+    },
+    refreshAll,
+    loadScenarios,
+    loadLeaderboard,
+    loadSelectedScenario,
+    resetSimulator,
+    loadMarketTrades: (id?: string) => { if (id) queryClient.invalidateQueries({ queryKey: ['marketTrades', id] }); },
+    loadMarketDetail: (id?: string) => { if (id) queryClient.invalidateQueries({ queryKey: ['marketDetail', id] }); },
+    loadAdminMarketPositions,
+    openMarketView,
+    closeMarketView,
+    refreshCurrentMarketDetail,
+    updateModalQuote,
+    doModalTrade,
+    doTrade,
+    doResolve,
 
     // computed
     openMarkets, resolvedMarkets,
