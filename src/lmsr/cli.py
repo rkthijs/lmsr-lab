@@ -49,6 +49,26 @@ except ImportError as e:
     print(f"Details: {e}")
     sys.exit(1)
 
+# Core simulator + DB (always available, no extra deps)
+try:
+    from src.lmsr import LMSRMarketSimulator
+    from src.lmsr.db import SQLiteStore
+except Exception:
+    LMSRMarketSimulator = None  # type: ignore
+    SQLiteStore = None  # type: ignore
+
+# Experiments (optional, in examples/)
+try:
+    from examples.experiments import (
+        compare_fixed_vs_adaptive,
+        print_comparison_table,
+        run_fixed_b_sweep,
+    )
+except ImportError:
+    run_fixed_b_sweep = None
+    compare_fixed_vs_adaptive = None
+    print_comparison_table = None
+
 
 def parse_b_values(b_str: str | None) -> list[float]:
     """Parse comma-separated b values, with sensible defaults."""
@@ -102,6 +122,120 @@ def cmd_serve(args: argparse.Namespace) -> None:
         print("FastAPI support not installed. Run: pip install -e '.[api]'")
         raise SystemExit(1) from e
     run(host=args.host, port=args.port, reload=args.reload)
+
+
+# --- DB subcommand (new, for SQLite persistence) ---
+
+def _require_sim_or_store(db_path: str):
+    if LMSRMarketSimulator is None or SQLiteStore is None:
+        print("Core simulator/DB not available.")
+        raise SystemExit(1)
+    return LMSRMarketSimulator(db_path=db_path), SQLiteStore(db_path)
+
+
+def cmd_db_inspect(args: argparse.Namespace) -> None:
+    sim, _ = _require_sim_or_store(args.db)
+    summary = sim.db_summary()
+    print(f"DB: {args.db}")
+    print(f"  Markets: {summary.get('num_markets', '?')}")
+    print(f"  Users:   {summary.get('num_users', '?')}")
+    print(f"  Trades:  {summary.get('num_trades', '?')}")
+    for m in summary.get("sample_markets", []):
+        print(f"  - {m['id']}: {m['title']} [{m['status']}]")
+
+
+def cmd_db_list(args: argparse.Namespace) -> None:
+    sim, _ = _require_sim_or_store(args.db)
+    markets = sim.list_markets()
+    if not markets:
+        print("No markets in DB.")
+        return
+    print(f"{'ID':<6} {'Title':<40} {'Status':<10} {'Trades':>6}")
+    print("-" * 65)
+    for m in markets:
+        n_trades = len(m.trades) if hasattr(m, "trades") else "?"
+        print(f"{m.id:<6} {m.title[:40]:<40} {m.status:<10} {n_trades:>6}")
+
+
+def cmd_db_reset(args: argparse.Namespace) -> None:
+    if not args.yes:
+        ans = input(f"Really clear ALL data in {args.db}? [y/N] ")
+        if ans.lower() != "y":
+            print("Aborted.")
+            return
+    sim, store = _require_sim_or_store(args.db)
+    sim.reset()  # clears in-mem + calls clear_all on DB
+    # also explicitly clear if needed
+    try:
+        store.clear_all()
+    except Exception:
+        pass
+    print(f"DB {args.db} has been reset (all tables cleared).")
+
+
+# --- State / JSON subcommand (new) ---
+
+def cmd_state_save(args: argparse.Namespace) -> None:
+    if LMSRMarketSimulator is None:
+        print("Simulator not available.")
+        raise SystemExit(1)
+    if args.db:
+        sim = LMSRMarketSimulator(db_path=args.db)
+    else:
+        sim = LMSRMarketSimulator()
+    sim.save_json(args.json)
+    print(f"Saved state to {args.json}")
+
+
+def cmd_state_load(args: argparse.Namespace) -> None:
+    if LMSRMarketSimulator is None:
+        print("Simulator not available.")
+        raise SystemExit(1)
+    db_path = args.db or None
+    sim = LMSRMarketSimulator.load_json(args.json, db_path=db_path)
+    print(f"Loaded {args.json} into simulator (db={db_path or 'in-memory'})")
+    print(f"  Markets loaded: {len(sim.list_markets())}")
+
+
+# --- Experiment command (fleshed out) ---
+
+def cmd_experiment(args: argparse.Namespace) -> None:
+    if run_fixed_b_sweep is None or compare_fixed_vs_adaptive is None:
+        print("experiments module not available (see examples/experiments.py).")
+        raise SystemExit(1)
+
+    name = (args.name or "sweep").lower()
+    true_p = getattr(args, "true_p", 0.7)
+    num_traders = getattr(args, "num_traders", 25)
+    b_str = getattr(args, "b", None)
+    output = getattr(args, "output", None)
+    db_path = getattr(args, "db", None)
+
+    if name in ("sweep", "fixed-sweep"):
+        b_values = parse_b_values(b_str) if b_str else [10.0, 25.0, 50.0, 100.0]
+        results = run_fixed_b_sweep(true_p=true_p, b_values=b_values, num_traders=num_traders)
+        print(f"Fixed-b sweep (true_p={true_p}, n_traders={num_traders}):")
+        for b, s in sorted(results.items()):
+            print(f"  b={b:>6.1f}  brier={s['mean_brier']:.4f}  log={s['mean_log_score']:.4f}")
+        if output:
+            with open(output, "w") as f:
+                import json
+                json.dump({str(k): v for k, v in results.items()}, f, indent=2)
+            print(f"  Saved to {output}")
+    elif name in ("compare", "fixed-vs-adaptive"):
+        comp = compare_fixed_vs_adaptive(true_p=true_p, num_traders=num_traders)
+        print_comparison_table(comp)
+        if output:
+            with open(output, "w") as f:
+                import json
+                json.dump(comp, f, indent=2)
+            print(f"  Saved to {output}")
+    else:
+        print(f"Unknown experiment '{name}'. Try 'sweep' or 'compare'.")
+        print("See: python examples/experiments.py --help (or source)")
+
+    if db_path:
+        print(f"(Note: --db {db_path} was provided; persistence support in experiments is experimental.)")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -161,13 +295,18 @@ def build_parser() -> argparse.ArgumentParser:
     compare_p.add_argument("--print-paths", action="store_true")
     compare_p.set_defaults(func=cmd_compare)
 
-    # Future placeholder for batch scoring / experiments
+    # Experiment runner (now functional)
     exp_p = subparsers.add_parser(
         "experiment",
-        help="(placeholder) Run parameter sweeps or batch scoring (to be expanded).",
+        help="Run calibration experiments (sweep, compare fixed vs adaptive). See examples/experiments.py.",
     )
-    exp_p.add_argument("name", nargs="?", default="list", help="Experiment name or 'list'")
-    exp_p.set_defaults(func=lambda a: print("Experiment runner not yet implemented. See examples/ for now."))
+    exp_p.add_argument("name", nargs="?", default="sweep", help="sweep | compare")
+    exp_p.add_argument("--true-p", type=float, default=0.7, help="True probability for belief simulation")
+    exp_p.add_argument("--num-traders", type=int, default=25)
+    exp_p.add_argument("--b", default=None, help="For sweep: comma list of b values")
+    exp_p.add_argument("--output", default=None, help="Write results to JSON file")
+    exp_p.add_argument("--db", default=None, help="(experimental) db_path for persistence during run")
+    exp_p.set_defaults(func=cmd_experiment)
 
     # Serve the FastAPI backend (requires the [api] extra)
     serve_p = subparsers.add_parser(
@@ -178,6 +317,43 @@ def build_parser() -> argparse.ArgumentParser:
     serve_p.add_argument("--port", type=int, default=8000, help="Port to listen on")
     serve_p.add_argument("--reload", action="store_true", help="Enable auto-reload (dev)")
     serve_p.set_defaults(func=cmd_serve)
+
+    # DB management (new - for the SQLite persistence backend)
+    db_p = subparsers.add_parser(
+        "db",
+        help="Inspect and manage .db files created with LMSRMarketSimulator(db_path=...).",
+    )
+    db_sub = db_p.add_subparsers(dest="db_cmd", required=True)
+
+    insp = db_sub.add_parser("inspect", help="Print summary (markets, trades, users) of a DB file.")
+    insp.add_argument("db", help="Path to SQLite DB (e.g. lmsr_demo.db)")
+    insp.set_defaults(func=cmd_db_inspect)
+
+    lst = db_sub.add_parser("list", help="List markets in the DB (id, title, status, #trades).")
+    lst.add_argument("db")
+    lst.set_defaults(func=cmd_db_list)
+
+    rst = db_sub.add_parser("reset", help="DANGEROUS: clear all data in the given DB.")
+    rst.add_argument("db")
+    rst.add_argument("--yes", action="store_true", help="Do not ask for confirmation")
+    rst.set_defaults(func=cmd_db_reset)
+
+    # State / JSON (new - complements pickle and DB)
+    st_p = subparsers.add_parser(
+        "state",
+        help="Save or load full simulator state as JSON (works with or without --db).",
+    )
+    st_sub = st_p.add_subparsers(dest="state_cmd", required=True)
+
+    sv = st_sub.add_parser("save", help="Save simulator state (from a DB or fresh) to a JSON file.")
+    sv.add_argument("json", help="Output .json path")
+    sv.add_argument("--db", default=None, help="Read state from this DB file instead of empty sim")
+    sv.set_defaults(func=cmd_state_save)
+
+    ld = st_sub.add_parser("load", help="Load a JSON state file (optionally into a target DB).")
+    ld.add_argument("json", help="Input .json path")
+    ld.add_argument("--db", default=None, help="Target DB to load into (creates if needed)")
+    ld.set_defaults(func=cmd_state_load)
 
     return parser
 

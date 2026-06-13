@@ -38,7 +38,7 @@ except ImportError:
 def load_history(path: str | Path) -> dict[str, Any]:
     """Load a trade history from a JSON file."""
     path = Path(path)
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 

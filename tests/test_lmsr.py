@@ -14,7 +14,6 @@ import pytest
 
 from src.lmsr.market import BinaryLMSRMarket
 
-
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
@@ -293,7 +292,7 @@ def test_multiple_users_independent_positions():
 # Adaptive / Dynamic b Tests
 # ------------------------------------------------------------------
 
-from src.lmsr.adaptive import LinearVolumeB, FixedB
+from src.lmsr.adaptive import FixedB, LinearVolumeB
 
 
 def test_adaptive_b_linear_volume_grows():
@@ -358,7 +357,7 @@ def test_log_volume_b():
 
 def test_bounded_b_wrapper():
     """BoundedB should correctly clip any strategy."""
-    from src.lmsr.adaptive import LinearVolumeB, BoundedB
+    from src.lmsr.adaptive import BoundedB, LinearVolumeB
 
     inner = LinearVolumeB(alpha=1.0, min_b=1.0)  # grows very fast
     bounded = BoundedB(inner, min_b=10, max_b=200)
@@ -393,11 +392,10 @@ def test_trade_count_b():
 # ------------------------------------------------------------------
 
 from src.lmsr.scoring import (
+    ForecasterScores,
+    brier_decomposition,
     brier_score,
     log_score,
-    brier_decomposition,
-    mean_brier_score,
-    ForecasterScores,
 )
 
 

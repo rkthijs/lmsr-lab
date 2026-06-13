@@ -57,9 +57,10 @@ See `BinaryLMSRMarket` for how to pass these strategies as the `b` parameter.
 
 from __future__ import annotations
 
+from typing import Protocol
+
 import numpy as np
 import numpy.typing as npt
-from typing import Protocol
 
 
 class AdaptiveBStrategy(Protocol):

@@ -13,20 +13,19 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import List
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 
 # Allow running this script directly from the project root
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from examples.replay_history import (
-    load_history,
     compare_b_values,
-    plot_price_with_volume,
+    load_history,
     plot_price_volume_grid,
+    plot_price_with_volume,
 )
 
 # Default histories to analyze (prioritizing the principled Kelly-based ones)
@@ -38,7 +37,7 @@ DEFAULT_HISTORIES = [
     "examples/trade_histories/very_long_gradual_trend.json",
 ]
 
-def compute_summary_stats(snapshots: List[dict]) -> dict:
+def compute_summary_stats(snapshots: list[dict]) -> dict:
     """Compute more interesting probabilistic statistics for a price path."""
     prices = np.array([s["price_yes"] for s in snapshots])
     deltas = np.diff(prices)
@@ -65,8 +64,8 @@ def compute_summary_stats(snapshots: List[dict]) -> dict:
 
 
 def generate_report(
-    history_paths: List[str],
-    b_values: List[float],
+    history_paths: list[str],
+    b_values: list[float],
     output_path: str = "examples/reports/rug_pull_analysis.pdf",
     title: str = "LMSR Rug Pull & Long Trend Analysis",
 ) -> None:
