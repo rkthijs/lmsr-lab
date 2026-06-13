@@ -186,7 +186,7 @@ See `.hermes/plans/` and DESIGN.md "Remaining Gaps" for historical context.
 - **Professional separate frontend + backend** (Next.js over FastAPI, completely independent of Streamlit):
   - User tab: exact per-user view (three-value accounting, portfolio, per-market positions); trade as any user; user-filtered "Past Markets" (only those where the user held positions)
   - Admin tab: global activity feed, sortable "All Users" table (User/Balance/Open/Resolved), sortable Global Leaderboard (with per-metric columns), "All Markets" grid (click for rich modal), resolve controls (now a dropdown of open markets)
-  - Market View modal: price-history SVG chart (hoverable), recent trades, quote preview, focused trading; admin mode adds cross-user positions + direct resolve
+  - Market View modal: price-history SVG chart (hoverable, synced), recent trades, quote preview, focused trading; admin mode renders a second running market-maker P/L (marked revenue - p·q) track directly under the price chart + cross-user positions + direct resolve
   - Loading states + skeletons (TanStack Query powered), scenario loading (consolidated), integer shares, 2.5% default fee
   - TanStack Query (#2), type tightening (#3), UX polish (#4), sortable tables, user-active past markets filter
 - **Consolidated demo scenarios** (via `SCENARIO_REGISTRY` used by both UIs):
@@ -225,5 +225,5 @@ When an agent is unsure about requirements, math, or design choices:
 
 ---
 
-**Last updated**: 2026-06-13 (documented current state: pro-UI sortable columns (All Users + Leaderboard), user-filtered Past Markets by default, added "Deep Single Active Market (Open)" scenario, consolidated non-bot scenarios into Full Teaching + kept Long Bot separate; full pro-UI + backend polish + docs refresh; all recent commits captured).
+**Last updated**: 2026-06-13 (added admin-only running MM profit chart under price history in MarketModal/PriceHistoryChart (powered by enriched /trades + computed marked P/L using cumulative effective revenue - p·q per trade); pro-UI admin view enhancement complete; previous: sortable columns, filtered past markets, scenarios, research param-sensitivity + report).
 **Maintainer note**: Treat this file as living documentation. Keep it concise but actionable. Update it whenever architecture, tooling, or scope meaningfully changes.

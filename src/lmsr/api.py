@@ -339,23 +339,51 @@ def quote_trade(market_id: str, shares_yes: int = 0, shares_no: int = 0):
 
 @app.get("/markets/{market_id}/trades")
 def get_market_trades(market_id: str):
-    """Return list of trades for the market (for charts etc in the demo)."""
+    """Return list of trades for the market (for charts etc in the demo).
+    Enriched with effective_cost, fee and running mm_profit (cumulative revenue
+    minus the marked-to-market value of outstanding shares at post-trade prices).
+    The mm_profit series is what powers the admin MM P/L track under the price chart.
+    """
     sim = get_sim()
     try:
         market = sim.get_market(market_id)
     except KeyError:
         raise HTTPException(404, f"Market {market_id} not found") from None
-    return [
-        {
-            "id": t.id,
+    return _enrich_market_trades(market)
+
+
+def _enrich_market_trades(market) -> list[dict]:
+    """Compute running market-maker P/L after each trade for charting.
+    mm_profit_after = cumulative_revenue - (p_yes * q_yes + p_no * q_no)
+    This gives a live marked P/L for the house (useful for open markets in admin).
+    """
+    out: list[dict] = []
+    revenue = 0.0
+    for t in market.trades:
+        revenue += float(getattr(t, "effective_cost", 0.0) or 0.0)
+        qy = qn = 0.0
+        try:
+            qa = getattr(t, "market_q_after", None)
+            if qa is not None and len(qa) == 2:
+                qy, qn = float(qa[0]), float(qa[1])
+        except Exception:
+            pass
+        py = float(getattr(t, "price_after_yes", 0.5) or 0.5)
+        pn = float(getattr(t, "price_after_no", 0.5) or 0.5)
+        marked = py * qy + pn * qn
+        mm_profit = revenue - marked
+        out.append({
+            "id": getattr(t, "id", None),
             "user_id": t.user_id,
             "shares_yes": t.shares_yes,
             "shares_no": t.shares_no,
+            "effective_cost": getattr(t, "effective_cost", None),
+            "fee": getattr(t, "fee", None),
             "price_after_yes": t.price_after_yes,
             "price_after_no": t.price_after_no,
-        }
-        for t in market.trades
-    ]
+            "mm_profit": round(mm_profit, 6),
+        })
+    return out
 
 
 @app.get("/users/{user_id}/portfolio")

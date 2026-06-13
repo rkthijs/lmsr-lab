@@ -160,6 +160,7 @@ export default function MarketModal({
                 trades={marketTrades}
                 hoveredIdx={hoveredTradeIdx}
                 onHover={setHoveredTradeIdx}
+                showMmProfit={activeTab === 'admin'}
               />
             )}
           </div>

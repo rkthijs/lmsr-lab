@@ -73,6 +73,7 @@ export interface Trade {
   price_after_yes?: number;
   price_after_no?: number;
   timestamp?: string;
+  mm_profit?: number;  // running market-maker P/L after this trade (admin chart)
 }
 
 export interface MarketDetail extends Market {
