@@ -1001,9 +1001,10 @@ def main() -> None:
     comp = compare_fixed_vs_adaptive(true_p=0.75, num_traders=22, seed=99)
     print_comparison_table(comp)
 
-    # === 1.A + 1.C: Approximate (toy) Kelly — fixed b (1.A) + adaptive b (1.C) ===
-    # Run once; results are split in output and plots.
-    print("\n=== 1.A + 1.C: Parameter Sensitivity — Approximate Kelly (toy belief market) ===")
+    # === Experiment 1: Parameter Sensitivity (with sub-variants 1.A–1.D) ===
+    # 1.A + 1.C use the toy/approx Kelly in controlled simulations (detailed here).
+    # 1.B + 1.D use real/true Kelly on the generated histories (see separate script).
+    print("\n=== Experiment 1: Parameter Sensitivity (1.A fixed approx, 1.B fixed true Kelly, 1.C adaptive approx, 1.D adaptive true Kelly) ===")
     print("1.A = Fixed b sweep with toy sizing")
     print("1.C = Adaptive b strategies (9 variants) with the same toy sizing")
     sens = parameter_sensitivity_analysis(
@@ -1022,9 +1023,9 @@ def main() -> None:
     )
     plot_adaptive_strategies(sens)
 
-    print("\n   (End of 1.A + 1.C toy approx Kelly section. See report for 1.B + 1.D real Kelly.)")
+    print("\n   (End of toy approx Kelly part of Exp 1. Run experiments_1b_kelly_sensitivity.py for 1.B + 1.D real Kelly.)")
 
-    # Experiment 2: Continuous Liquidity
+    # === Experiment 2: Continuous Liquidity ===
     print("\n=== Experiment 2: Continuous Liquidity (always-available counterparty, cold-start) ===")
     print("Second of the five key learnings. LMSR MM always provides liquidity; no cold-start or need for opposing orders.")
     liq = measure_liquidity_availability(
@@ -1041,7 +1042,7 @@ def main() -> None:
     print("  OB baseline for size 100:", liq["order_book_baseline"].get(100))
     print("  (See full results dict for all probes and the order-book comparison stub.)")
 
-    # Experiment 3: Capital Efficiency
+    # === Experiment 3: Capital Efficiency ===
     print("\n=== Experiment 3: Capital Efficiency (collateral waste on tails) ===")
     print("Third of the five key learnings. How much of the initial subsidy is actually 'at risk' vs idle on unlikely tails?")
     cap = capital_efficiency_analysis(

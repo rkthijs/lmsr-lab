@@ -241,8 +241,8 @@ def run_1b_demo(b_values: list[float] | None = None) -> None:
     h = load_history(main_history_path)
     name = Path(main_history_path).stem
 
-    # 1.B: several fixed b values (low to very high)
-    fixed_bs = [10, 50, 200, 800]
+    # 1.B: the b values you specified for true Kelly fixed-b plots (higher b's, low b too noisy)
+    fixed_bs = [100, 200, 400, 800, 1600]
     fixed_results = {}
     for b in fixed_bs:
         snaps = replay_history(h, b=b)
