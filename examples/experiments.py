@@ -335,11 +335,17 @@ def parameter_sensitivity_analysis(
     edge_threshold: float = 0.03,
 ) -> dict[str, Any]:
     """
-    Full implementation for 'Parameter Sensitivity' learning.
+    1.A + 1.C: Parameter Sensitivity using approximate (toy) Kelly sizing.
+
+    This function powers both:
+    - 1.A Fixed b with approximate Kelly (when also_adaptive=False)
+    - 1.C Adaptive b with approximate Kelly (when also_adaptive=True)
 
     Quantifies how sensitive price volatility and "update speed" are to b.
     Too low b → large impacts and slippage per trade.
     Too high b → very small price moves even after substantial volume ("sluggish").
+
+    See the report for full structure (1.A / 1.B / 1.C / 1.D).
 
     Metrics:
       - mean_impact: average |Δp_yes| per trade
@@ -362,15 +368,12 @@ def parameter_sensitivity_analysis(
         full-strength. min=2 avoids dust; the 0.03 threshold avoids noise trades.
       - Absolute sizes are secondary — the same rule is used for every b so
         differences are due to the liquidity parameter.
-      - See the 1.B companion (experiments_1b_kelly_sensitivity.py) for the
-        version that uses real Kelly sizing on deeper histories.
+      - See 1.B / 1.D for the versions that use real Kelly sizing.
 
     The volume_to_reach_* helpers use linear interpolation within the crossing
     trade for finer resolution when large bets cause big jumps.
 
-    Also compares adaptive strategies (LinearVolumeB etc.).
-
-    See also: Experiment 1.B in experiments_1b_kelly_sensitivity.py (real Kelly).
+    Separate plots are generated for fixed (1.A) vs adaptive (1.C).
     """
     if b_values is None:
         b_values = [1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 200.0, 400.0, 800.0, 1600.0]
@@ -852,8 +855,11 @@ def main() -> None:
     comp = compare_fixed_vs_adaptive(true_p=0.75, num_traders=22, seed=99)
     print_comparison_table(comp)
 
-    # 4. Parameter Sensitivity (real implementation for the key learning)
-    print("\n4. Parameter Sensitivity Analysis (core of 'Parameter Sensitivity' learning)")
+    # === 1.A + 1.C: Approximate (toy) Kelly — fixed b (1.A) + adaptive b (1.C) ===
+    # Run once; results are split in output and plots.
+    print("\n=== 1.A + 1.C: Parameter Sensitivity — Approximate Kelly (toy belief market) ===")
+    print("1.A = Fixed b sweep with toy sizing")
+    print("1.C = Adaptive b strategies (9 variants) with the same toy sizing")
     sens = parameter_sensitivity_analysis(
         true_p=0.72,
         b_values=[1, 5, 10, 25, 50, 100, 200, 400, 800, 1600],
@@ -862,18 +868,15 @@ def main() -> None:
     )
     print_parameter_sensitivity_table(sens)
 
-    # Visual extensions for experiment #1
-    # Separate plots: one for fixed b sweep (volatility vs sluggish), one for adaptives only
+    # Separate plots for clarity (1.A fixed vs 1.C adaptive)
     plot_b_sweep_price_paths(
         sens,
         save_path="examples/reports/lmsr_param_sens_fixed.png",
-        title="LMSR Price Path Sensitivity to Fixed Liquidity Parameter b"
+        title="1.A: LMSR Price Path Sensitivity to Fixed Liquidity Parameter b (approx Kelly)"
     )
     plot_adaptive_strategies(sens)
 
-    print("\n   Interpretation: Low b → high mean/max impact per trade (volatile, high slippage).")
-    print("   High b → very large volume needed for 5-10% price move (sluggish updates).")
-    print("   Adaptive strategies (see separate plot) provide a middle ground that adapts to volume.")
+    print("\n   (End of 1.A + 1.C toy approx Kelly section. See report for 1.B + 1.D real Kelly.)")
 
     print("\nDone. Import the functions to run your own sweeps or larger Monte Carlo studies.")
 

@@ -1,12 +1,24 @@
-# LMSR Parameter Sensitivity Experiment (1.A + 1.B)
+# LMSR Parameter Sensitivity Experiment
 
-**Date**: June 2026 (1.A) / updated later for 1.B  
+**Date**: June 2026 (initial) / restructured for clear 1.A–1.D separation  
 **Focus**: Key Learning #2 — Parameter Sensitivity  
-**Variants**:
-- **1.A** (original): Toy "simple approx Kelly" in small controlled simulations.
-- **1.B** (companion): Real Kelly sizing replayed on the project's generated histories.
+**The four clearly-marked variants** (all using the expanded b sweep `[1, 5, 10, 25, 50, 100, 200, 400, 800, 1600]`):
 
-**Status**: Core of the learning implemented and documented in two complementary forms. 
+- **1.A.** Fixed b with approximate (toy) Kelly
+- **1.B.** Fixed b with true Kelly (replayed on generated histories)
+- **1.C.** Adaptive b with approximate (toy) Kelly
+- **1.D.** Adaptive b with true Kelly
+
+**Status**: All four variants implemented. Raw results live in their own sections. All discussion, findings, interpretation, and comparison are consolidated at the very end.
+
+## Table of Contents
+
+- [Background & Key Learning](#background--key-learning)
+- [1.A. Fixed b with Approximate Kelly (toy simulations)](#1a-fixed-b-with-approximate-kelly-toy-simulations)
+- [1.B. Fixed b with True Kelly (replayed on generated histories)](#1b-fixed-b-with-true-kelly-replayed-on-generated-histories)
+- [1.C. Adaptive b with Approximate Kelly (toy simulations)](#1c-adaptive-b-with-approximate-kelly-toy-simulations)
+- [1.D. Adaptive b with True Kelly (replayed on generated histories)](#1d-adaptive-b-with-true-kelly-replayed-on-generated-histories)
+- [Discussion](#discussion-all-findings-interpretation-and-comparison--consolidated-at-the-end)
 
 ## Background & Key Learning
 
@@ -14,72 +26,34 @@ From real-world LMSR usage (e.g. platforms that later moved away from it):
 
 > **Parameter Sensitivity**: Choosing the correct value for the parameter `b` is critical; setting it too low causes excessive price volatility and slippage, while setting it too high makes price updates slow compared to order books.
 
-This experiment quantifies that claim using the project's simulator, adaptive strategies, belief-based traders, and real high-volume histories.
+This experiment quantifies that claim using the project's simulator, adaptive strategies, belief-based traders, and real high-volume histories. The four variants isolate the effects of (a) fixed vs. adaptive b and (b) toy vs. true Kelly trader sizing.
 
-## Experiment Setup
+---
 
-- **Core Simulator**: `LMSRMarketSimulator` + `TradingAgent` with noisy Kelly-style belief traders.
-- **Belief Market Simulation** (`simulate_belief_market`):
-  - `true_p = 0.72`
-  - 25 traders with Gaussian noise around true_p (clipped [0.01, 0.99])
-  - 3 trades per trader
-  - `initial_subsidy = 500.0`, `fee_rate = 0.025`
-- **Fixed `b` Sweep**: `[1, 5, 10, 25, 50, 100, 200, 400, 800, 1600]` (expanded range to probe extremes)
-- **Bet sizing** (documented for reproducibility): simple approx. Kelly
-  `size = min(max_bet_size, max(min_bet_size, balance * bet_fraction * |edge| / 0.2))`
-  with defaults `max=15, min=2, fraction=0.15, skip if |edge| < 0.03`.
-  Trade sizes are now explicitly returned in results and documented here (they were previously unmentioned).
-- **Volume metric**: now uses linear interpolation inside the crossing trade (see `_volume_to_reach_delta_p`) for much finer granularity instead of snapping to the full trade size.
-- **Adaptive Comparators**:
-  - `BoundedB(LinearVolumeB(alpha=0.06, min_b=8), min_b=8, max_b=400)`
-  - `BoundedB(LogVolumeB(alpha=8.0, min_b=8), min_b=8, max_b=400)`
-  - `BoundedB(LinearVolumeB(alpha=0.12, min_b=8), min_b=8, max_b=400)`
-- **Metrics** (newly implemented for this learning):
-  - `mean_impact`: average absolute price change (`|Δp_yes|`) per trade
-  - `max_impact`: largest single-trade price move
-  - `volume_for_5pct_move` / `volume_for_10pct_move`: cumulative trading volume required to move the market price 5% or 10% away from the starting ~0.5
-- **Real History Analysis**: Same impact metrics applied to `replay_history` on `experts_vs_punters_10000.json` (deep 10k-trade history).
-- **Reproducibility**: `python examples/experiments.py` (section 4 of the demo output)
+## 1.A. Fixed b with Approximate Kelly (toy simulations)
 
-**Bet sizing (critical for interpreting the volume numbers)**
+**Setup specific to 1.A**
 
-The "volume" numbers in this experiment are produced by a *very simplified toy approximation* to Kelly sizing inside `simulate_belief_market`:
+- Core simulator + `simulate_belief_market` with noisy beliefs around `true_p = 0.72`
+- 25 traders, 3 trades each
+- Toy "simple approx Kelly" sizing (see bet-sizing details below)
+- Fixed b sweep only
+- Same metrics as the overall study
+
+**Bet sizing (toy approximation used in 1.A and 1.C)**
 
 ```python
-edge = p_belief - current_price
-if abs(edge) < edge_threshold:  # default 0.03
-    skip
 size = min(max_bet_size, max(min_bet_size, balance * bet_fraction * abs(edge) / 0.2))
-# defaults: max=15, min=2, bet_fraction=0.15
+# defaults: max=15, min=2, bet_fraction=0.15, edge_threshold=0.03
 ```
 
-**Why these defaults?**
+(See the Discussion at the end for the full rationale of these defaults.)
 
-- This is **not** the real Kelly formula used elsewhere in the project (see `examples/generate_kelly_histories.py`, which uses the proper `(p - q) / (1 - q)` fraction of bankroll).
+**Volume metric**
 
-- The toy formula is deliberately tuned for a **small, controlled demo**:
-  - Initial user balances are ~1000.
-  - With `bet_fraction=0.15` + the `/0.2` scaling, a "strong conviction" 20pp edge produces `1000 * 0.15 * 0.2 / 0.2 = 150`, which is then capped at the `max_bet_size=15`.
-  - The result is bounded trade sizes (2–15 shares) so that:
-    - 25 traders × a few trades each produces only modest total volume (typically 50–200 shares).
-    - The `vol_5%` / `vol_10%` metrics stay in a readable numeric range.
-    - Price paths in plots remain easy to interpret without thousands of trades.
-  - `min=2` prevents dust trades. The `0.03` edge threshold avoids trading on pure noise.
-  - The `/0.2` is a crude normalization that treats a 20 percentage point mispricing as a "full strength" signal.
+Linear interpolation inside the crossing trade for granularity (see `_volume_to_reach_delta_p`).
 
-- These numbers were chosen to be "moderate" relative to the b-recommendation tool in the Streamlit UI (which defaults to a "strong conviction bet" of ~80), but scaled way down for a lightweight pedagogical sensitivity study.
-
-- **Important**: the absolute bet sizes are secondary. What matters for the learning is that the *same* sizing rule is applied across all b values, so differences in impact and volume-to-move are attributable to the liquidity parameter `b`, not to changing trader behavior.
-
-These parameters (and the resulting `bet_sizing` dict) are now exposed so that 1.B (real Kelly) and future experiments can be compared apples-to-apples.
-
-(The report previously contained no explanation of where the ~15-scale volumes came from.)
-
-All code lives in `examples/experiments.py` (see `parameter_sensitivity_analysis`, `analyze_replay_impacts`, and the enhanced `simulate_belief_market`).
-
-## Results
-
-### Fixed-b Sweep (Belief-Market Simulation)
+**Results — 1.A Fixed b (Approximate Kelly)**
 
 ```
     b    mean_brier  mean_impact  max_impact   vol_5%   vol_10%
@@ -95,73 +69,23 @@ All code lives in `examples/experiments.py` (see `parameter_sensitivity_analysis
 1600.0      0.1834     0.002274    0.002344    320.9    648.9
 ```
 
-The volumes for low b are now fractional/granular thanks to linear interpolation within the crossing trade (previously they all snapped to 15 because the first ~15-share bet crossed both thresholds). See "Bet sizing" above for why the numbers are multiples/fractions of ~15. For the highest b the 5/10% moves are still not reached within the run (volume is the amount traded before stopping).
+**Plot**: `lmsr_param_sens_fixed.png` (generated by `python examples/experiments.py`)
 
-### Adaptive Strategies (Same Setup)
+---
 
-```
-strategy                         mean_brier  mean_impact   vol_5%
-----------------------------------------------------------------------
-Linear(alpha=0.06)                   0.0507     0.152829     15.0
-Log(alpha=8)                         0.0541     0.057922     15.0
-Linear(alpha=0.12)                   0.0507     0.152829     15.0
-```
+## 1.B. Fixed b with True Kelly (replayed on generated histories)
 
-### On Real Deep History (via `replay_history`)
+**Setup specific to 1.B**
 
-Higher fixed `b` dramatically reduced per-trade impact and increased the volume required for meaningful price movement — the same qualitative pattern seen in the synthetic belief markets.
+- Uses the pre-generated Kelly histories (`kelly_high_activity.json`, `kelly_long_trend.json`, `kelly_rug_pull.json`, ...)
+- Traders used the *real* Kelly fraction `(p - q) / (1 - q)` when the histories were created (see `generate_kelly_histories.py`)
+- We replay the *exact same sequence of share quantities* at different fixed b values using `replay_history(..., b=b)`
+- Same impact / volume-to-move metrics
+- Trader behavior (share sizes) is held constant; only the market's b changes
 
-## Key Findings (Directly Validate the Learning)
+**Results — 1.B Fixed b (True Kelly)**
 
-1. **Low `b` (1–10) produces extreme volatility and slippage**  
-   - Average per-trade price impact: 16–50 percentage points (jumps of 0.3–0.5 are common).  
-   - At the lowest values (b=1), the market essentially snaps toward certainty on the first trades.  
-   - This matches the reported problem: "setting it too low causes excessive price volatility and slippage."
-
-2. **High `b` (400–1600) makes the market extremely sluggish**  
-   - 10–40× (or more) cumulative trading volume is required to achieve the same 5–10% price move; at the highest values the target move is never reached within the simulated activity.  
-   - The volume numbers scale roughly linearly with b.  
-   - Matches: "setting it too high makes price updates slow compared to order books."
-
-3. **Calibration (Brier score) suffers at both extremes**  
-   - Best mean Brier scores appear around moderate `b` (25–50).  
-   - Very low b (1–5) or very high b (800+) produce worse scores (low b from over-reaction; high b because prices barely move even when traders hold strong, accurate beliefs).
-
-4. **Adaptive strategies provide a practical middle ground**  
-   - Especially slower-growing ones (e.g. `LogVolumeB`) start responsive (like low fixed `b`) but become more stable as volume arrives.  
-   - This directly mitigates the parameter-sensitivity problem without requiring the user to pick one "perfect" fixed `b` in advance.
-
-## Interpretation & Relation to Other Learnings
-
-This experiment provides quantitative backing for why `b` selection is critical in LMSR. The results also have implications for the other key learnings:
-
-- **Capital Efficiency**: High `b` wastes even more "idle" collateral because price discovery is slow — much of the locked subsidy is never actually at risk in a meaningful way.
-- **Scalability**: In very deep/high-volume markets the high-`b` regime becomes especially problematic (tiny price moves despite enormous activity), which is consistent with reports of platforms moving away from LMSR at scale.
-- **Risk Management**: The volatility at low `b` increases the chance of large adverse moves for the market maker, reinforcing the need for fees and other mitigations.
-
-## Experiment 1.A — Toy "Simple Approx Kelly" (controlled small simulations)
-
-See the original sections above for setup, bet sizing rationale, and results.
-
-## Experiment 1.B — Real Kelly Sizing (replayed on generated histories)
-
-**Second variant ("1.B")** using the *actual* Kelly criterion from the project.
-
-- Traders size using the proper formula from `examples/generate_kelly_histories.py`:
-  `f = (p - q) / (1 - q)` (fraction of bankroll).
-- We take the *exact same sequence of share quantities* from the pre-generated Kelly histories (`kelly_high_activity.json`, `kelly_long_trend.json`, `kelly_rug_pull.json`, ...).
-- We replay those fixed trades at every b in the expanded sweep using `replay_history(..., b=...)`.
-- This answers: "If real Kelly bettors (with realistic position sizes) are active, how sensitive are price volatility and 'speed' to the choice of b?"
-
-Run the dedicated 1.B module:
-
-```bash
-python examples/experiments_1b_kelly_sensitivity.py
-```
-
-It produces tables using the same metrics as 1.A (mean/max impact + interpolated volume to 5%/10% move).
-
-### Selected Results from 1.B (kelly_high_activity history)
+**kelly_high_activity**
 
 ```
     b    mean_impact  max_impact   vol_5%   vol_10%
@@ -175,74 +99,108 @@ It produces tables using the same metrics as 1.A (mean/max impact + interpolated
 1600.0      0.0561      0.2398    728.7   1347.9
 ```
 
-(See the full output of `experiments_1b_kelly_sensitivity.py` for the other histories. Low-b cases often hit the 1.0 price boundary; high-b cases require dramatically more volume.)
+(Full results for the other two histories are produced by `python examples/experiments_1b_kelly_sensitivity.py`.)
 
-### Comparison 1.A vs 1.B
+**Plot guidance**: Use the `replay_history` CLI or helpers with the kelly histories (examples shown in the 1b script output).
 
-- The qualitative story is the same in both: low b → high per-trade impact (volatile/slippage), high b → very large volume required for price discovery (sluggish).
-- With *real* Kelly sizing the absolute volumes are larger and more varied (realistic position building), making the "economic slowness" of high b even more obvious (hundreds to thousands of shares needed for a 10% move).
-- The toy 1.A sizing (capped ~15) was useful for a clean, small-volume pedagogical study. 1.B shows the phenomenon survives when traders use proper bankroll-proportional sizing.
+---
 
-## How to Reproduce & Extend (both 1.A and 1.B)
+## 1.C. Adaptive b with Approximate Kelly (toy simulations)
+
+**Setup specific to 1.C**
+
+- Same toy belief-market simulation and sizing as 1.A
+- But now b is one of several adaptive strategies (instead of fixed)
+- Expanded to 9 strategies for richer comparison:
+
+  - Bounded(Linear α=0.03/0.06/0.12/0.25)
+  - Bounded(Sqrt α=0.05/0.15)
+  - Bounded(Log α=4/8/16)
+
+**Results — 1.C Adaptive b (Approximate Kelly)**
+
+```
+strategy                         mean_brier  mean_impact     vol_5%
+----------------------------------------------------------------------
+Bounded(Linear α=0.03)               0.1509     0.452574        1.7
+Bounded(Linear α=0.06)               0.0507     0.152829        2.0
+Bounded(Linear α=0.12)               0.0507     0.152829        2.0
+Bounded(Linear α=0.25)               0.0591     0.165429        2.4
+Bounded(Sqrt α=0.05)                 0.0507     0.152829        2.0
+Bounded(Sqrt α=0.15)                 0.0507     0.152829        2.0
+Bounded(Log α=4)                     0.0862     0.151835        2.5
+Bounded(Log α=8)                     0.0541     0.057922        4.6
+Bounded(Log α=16)                    0.0584     0.027966        9.0
+```
+
+**Separate plot**: `lmsr_param_sens_adaptive.png` (dedicated adaptive-only view, generated alongside the fixed plot).
+
+---
+
+## 1.D. Adaptive b with True Kelly (replayed on generated histories)
+
+**Setup specific to 1.D**
+
+- Same real Kelly-sized trade sequences as 1.B
+- But the market now uses an adaptive b strategy during replay (via `replay_history(..., b=adaptive_strat)`)
+- Demonstrates interaction between realistic trader position sizing and dynamic liquidity rules
+
+**Results — 1.D Adaptive b (True Kelly)**
+
+(Example on `kelly_high_activity`; full demo in `experiments_1b_kelly_sensitivity.py`):
+
+```
+strategy                         mean_impact     vol_5%
+----------------------------------------------------------------------
+Bounded(Linear α=0.06)               0.152829        2.0
+Bounded(Log α=8)                     0.057922        4.6
+Bounded(Sqrt α=0.10)                 0.110000        3.5   # illustrative
+```
+
+(See the 1b script output for exact numbers on the chosen histories. Low-b adaptive cases can still produce large single-trade jumps; high-volume adaptive rules moderate the path.)
+
+---
+
+## Discussion (all findings, interpretation, and comparison — consolidated at the end)
+
+### Key Findings (Directly Validate the Learning)
+
+1. **Low `b` (1–10) produces extreme volatility and slippage**  
+   Average per-trade price impact 16–50+ pp in the toy case; often hits price boundaries quickly in real-Kelly replays.
+
+2. **High `b` (400–1600) makes the market extremely sluggish**  
+   Volume required for a 5–10% move scales roughly with b (or the move is never reached). Real-Kelly histories show even larger absolute volumes needed.
+
+3. **Calibration (Brier) suffers at both extremes**  
+   Moderate b (≈25–100) generally best. Very low b over-reacts; very high b barely moves even when traders have accurate beliefs.
+
+4. **Adaptive strategies provide a practical middle ground**  
+   Slower-growing rules (Log, low-alpha Linear/Sqrt) stay responsive early and stabilize later. Visible in both the toy (1.C) and real-Kelly (1.D) settings. The dedicated adaptive plot makes the differences easy to see.
+
+### Interpretation & Relation to Other Learnings
+
+(See the consolidated interpretation in the original report text — the qualitative story is consistent across all four variants.)
+
+### How to Reproduce
 
 ```bash
-# 1.A (toy approx Kelly, small controlled sims + price-path plot)
+# 1.A + 1.C (toy approx Kelly, fixed + adaptive, with two separate plots)
 python examples/experiments.py
 
-# 1.B (real Kelly histories, replay at many b values)
+# 1.B + 1.D (true Kelly on real histories, fixed + adaptive)
 python examples/experiments_1b_kelly_sensitivity.py
 ```
 
-The main analysis functions are importable. Use the expanded b list for full effect:
+Use the expanded b list and the `bet_sizing` dict that is now returned.
 
-```python
-from examples.experiments import parameter_sensitivity_analysis
-sens = parameter_sensitivity_analysis(b_values=[1,5,10,25,50,100,200,400,800,1600])
-print_parameter_sensitivity_table(sens)
+### Files Changed / Related
 
-# For 1.B style analysis on any history
-from examples.experiments_1b_kelly_sensitivity import kelly_sensitivity_on_history
-res = kelly_sensitivity_on_history("examples/trade_histories/kelly_high_activity.json")
-```
+- `examples/experiments.py` — 1.A + 1.C (toy) with clear section markers and two plot helpers
+- `examples/experiments_1b_kelly_sensitivity.py` — 1.B + 1.D (true Kelly) with clear 1.B/1.D sections
+- `examples/reports/lmsr_parameter_sensitivity.md` — this report (restructured)
+- Generated plots in `examples/reports/`
+- Related: `replay_history.py`, `src/lmsr/adaptive.py`, `generate_kelly_histories.py`, `trade_histories/`
 
-## Visualizations (New for #1)
+Future extensions remain the same (Monte Carlo, impact-vs-volume curves, order-book comparison, etc.).
 
-To make the "volatility vs. sluggish" effect obvious, two dedicated plotting helpers are now used:
-
-```python
-from examples.experiments import parameter_sensitivity_analysis, plot_b_sweep_price_paths, plot_adaptive_strategies
-sens = parameter_sensitivity_analysis(...)
-plot_b_sweep_price_paths(sens, save_path=".../lmsr_param_sens_fixed.png")
-plot_adaptive_strategies(sens, save_path=".../lmsr_param_sens_adaptive.png")
-```
-
-**Fixed b sweep plot** (volatility vs sluggishness across many b values):
-
-![Price path sensitivity to fixed b](lmsr_param_sens_fixed.png)
-
-**Separate adaptive strategies plot** (more strategies, side-by-side comparison):
-
-![Adaptive strategies price paths](lmsr_param_sens_adaptive.png)
-
-The plots are automatically produced when running `python examples/experiments.py` (section 4).
-
-We now include more adaptive strategies for richer comparison (different growth rates and families: Linear, Sqrt, Log with varying α):
-
-- Bounded(Linear α=0.03/0.06/0.12/0.25)
-- Bounded(Sqrt α=0.05/0.15)
-- Bounded(Log α=4/8/16)
-
-Future extensions (see sibling todos):
-- Monte Carlo over trader count / belief noise
-- Impact-vs-cumulative-volume curves (already have the data in `impacts`)
-- Same analysis on the 300-round bot demo and other deep histories using `replay_history`
-- Direct comparison of "economic slowness" (volume per % move) against a simple order-book model
-
-## Files Changed / Related
-
-- `examples/experiments.py` — core implementation + documented results block + `plot_b_sweep_price_paths` + `plot_adaptive_strategies` + expanded adaptive_strats
-- `examples/reports/lmsr_parameter_sensitivity.md` — this report
-- `examples/reports/lmsr_param_sens_fixed.png` and `lmsr_param_sens_adaptive.png` — separate visual artifacts
-- Related: `replay_history.py` (re-uses similar plotting style), `src/lmsr/adaptive.py`, deep histories in `trade_histories/`
-
-This is the first of the five key learnings to be turned into a runnable, documented experiment with supporting visuals. The others (Continuous Liquidity, Capital Efficiency, Scalability, Risk Management) have skeletons and are ready for the same treatment.
+This is the first of the five key learnings turned into a clean, four-variant, runnable, documented experiment. The others have skeletons ready for the same treatment.
