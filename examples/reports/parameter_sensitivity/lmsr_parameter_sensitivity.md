@@ -85,13 +85,10 @@ Linear interpolation inside the crossing trade for granularity (see `_volume_to_
 
 **Results — 1.B Fixed b (True Kelly)**
 
-**kelly_high_activity**
+**kelly_high_activity** (only the b values you specified; low b too noisy for the plot)
 
 ```
     b    mean_impact  max_impact   vol_5%   vol_10%
-  1.0       0.1751      1.0000     15.3     30.6
- 10.0       0.6628      1.0000     15.3     30.6
- 50.0       0.4226      1.0000     16.8     33.6
 100.0       0.4026      0.9991     23.8     47.5
 200.0       0.2859      0.9594     41.9     83.9
 400.0       0.1810      0.7509     81.0    211.2
@@ -99,13 +96,13 @@ Linear interpolation inside the crossing trade for granularity (see `_volume_to_
 1600.0      0.0561      0.2398    728.7   1347.9
 ```
 
-(Full results for the other two histories are produced by `python examples/experiments_1b_kelly_sensitivity.py`.)
+(Full results for the other two histories and lower b are produced by `python examples/experiments_1b_kelly_sensitivity.py`.)
 
-**Proper Kelly price+volume plot (1.B fixed b on real Kelly trades)** – this is the standard price graph style used for Kelly histories in the project (P(Yes) on top, Yes/No volume bars per trade below):
+**Proper Kelly price+volume plot (1.B fixed b on real Kelly trades, using exactly these b values)** – this is the standard price graph style used for Kelly histories in the project (P(Yes) on top, Yes/No volume bars per trade below). Generated with the exact b values and data you specified for the true Kelly fixed-b case:
 
 ![1.B Kelly fixed price+volume](lmsr_param_sens_1b_kelly_high_activity_fixed_price_volume.png)
 
-These plots (and the ones for 1.D) are now automatically generated when you run `python examples/experiments_1b_kelly_sensitivity.py`.
+These plots (and the ones for 1.D) are now automatically generated when you run `python examples/experiments_1b_kelly_sensitivity.py`. The previous restructure moved the old toy plots' central visualization notes into the Discussion (to keep raw data per 1.A–1.D section); the proper true-Kelly price+volume graphs are now embedded directly in 1.B and 1.D.
 
 ---
 
