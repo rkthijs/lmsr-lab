@@ -356,6 +356,7 @@ def parameter_sensitivity_analysis(
         vol_5 = _volume_to_reach_delta_p(impacts, target_delta=0.05)
         vol_10 = _volume_to_reach_delta_p(impacts, target_delta=0.10)
 
+        price_series = [0.5] + [imp["price_after"] for imp in impacts]
         results["fixed"][b] = {
             "mean_brier": res["mean_brier"],
             "mean_log_score": res["mean_log_score"],
@@ -365,6 +366,7 @@ def parameter_sensitivity_analysis(
             "total_volume": round(cum_vol, 1),
             "volume_for_5pct_move": vol_5,
             "volume_for_10pct_move": vol_10,
+            "price_series": price_series,
         }
 
     # Adaptive strategies (for comparison)
@@ -389,6 +391,7 @@ def parameter_sensitivity_analysis(
             vol_5 = _volume_to_reach_delta_p(impacts, target_delta=0.05)
             vol_10 = _volume_to_reach_delta_p(impacts, target_delta=0.10)
 
+            price_series = [0.5] + [imp["price_after"] for imp in impacts]
             results["adaptive"][name] = {
                 "mean_brier": res["mean_brier"],
                 "mean_log_score": res["mean_log_score"],
@@ -398,6 +401,7 @@ def parameter_sensitivity_analysis(
                 "total_volume": round(cum_vol, 1),
                 "volume_for_5pct_move": vol_5,
                 "volume_for_10pct_move": vol_10,
+                "price_series": price_series,
             }
 
     return results
@@ -608,6 +612,65 @@ def print_parameter_sensitivity_table(results: dict[str, Any]) -> None:
             print(f"{name:<30} {s['mean_brier']:>12.4f} {s['mean_impact']:>12.6f} {s['volume_for_5pct_move']:>10.1f}")
 
 
+def plot_b_sweep_price_paths(
+    results: dict[str, Any],
+    title: str = "LMSR Price Path Sensitivity to Liquidity Parameter b",
+    save_path: str | None = "examples/reports/lmsr_param_sens_price_paths.png",
+    show: bool = False,
+) -> None:
+    """Plot overlaid price paths from a parameter_sensitivity_analysis result.
+
+    Visualizes the core of the Parameter Sensitivity learning:
+    - Low b: wild swings (high volatility/slippage)
+    - High b: almost flat lines (sluggish price discovery)
+
+    Uses the price_series collected during the sweep.
+    Matplotlib is optional (like in replay_history.py).
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not available — run `pip install matplotlib` to generate plots.")
+        return
+
+    plt.figure(figsize=(11, 6))
+
+    fixed = results.get("fixed", {})
+    for b in sorted(fixed):
+        series = fixed[b].get("price_series", [])
+        if not series:
+            continue
+        steps = list(range(len(series)))
+        plt.plot(steps, series, linewidth=1.4, marker=".", markersize=3, label=f"b = {b}")
+
+    # Optionally overlay one adaptive if present and has series
+    adaptive = results.get("adaptive", {})
+    for name, data in list(adaptive.items())[:1]:  # just the first for visual clarity
+        series = data.get("price_series", [])
+        if series:
+            steps = list(range(len(series)))
+            plt.plot(steps, series, linewidth=1.8, linestyle="--", label=f"adaptive: {name}")
+
+    plt.axhline(0.5, color="gray", linestyle=":", alpha=0.5, label="initial 50%")
+    plt.xlabel("Trade step (cumulative)")
+    plt.ylabel("P(Yes)")
+    plt.title(title)
+    plt.legend(loc="best", fontsize=9)
+    plt.grid(True, alpha=0.25)
+    plt.ylim(0, 1.05)
+    plt.tight_layout()
+
+    if save_path:
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"  Saved parameter sensitivity price paths plot → {save_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+
 def print_comparison_table(results: dict[str, Any]) -> None:
     """Pretty print a simple comparison of mean Brier scores."""
     print("\nFixed b results:")
@@ -656,6 +719,9 @@ def main() -> None:
     )
     print_parameter_sensitivity_table(sens)
 
+    # Visual extension for experiment #1 (price paths make the volatility vs sluggishness obvious)
+    plot_b_sweep_price_paths(sens)
+
     print("\n   Interpretation: Low b → high mean/max impact per trade (volatile, high slippage).")
     print("   High b → very large volume needed for 5-10% price move (sluggish updates).")
     print("   Adaptive strategies typically sit between moderate fixed b values.")
@@ -672,6 +738,11 @@ Sample Results from the Parameter Sensitivity Experiment
 
 (Generated June 2026 using the implementation in this file.
 Reproduce with: `python examples/experiments.py`)
+
+Note: In later runs the same seed produces identical tables. A price-path visualization
+helper (`plot_b_sweep_price_paths`) was added to directly illustrate the volatility vs
+sluggish effect for this experiment (saved under examples/reports/).
+
 
 Setup
 -----

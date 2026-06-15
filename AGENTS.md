@@ -225,5 +225,5 @@ When an agent is unsure about requirements, math, or design choices:
 
 ---
 
-**Last updated**: 2026-06-13 (added admin-only running MM profit chart under price history in MarketModal/PriceHistoryChart (powered by enriched /trades + computed marked P/L using cumulative effective revenue - p·q per trade); pro-UI admin view enhancement complete; previous: sortable columns, filtered past markets, scenarios, research param-sensitivity + report).
+**Last updated**: 2026-06-13 (back to research: extended experiment #1 (Parameter Sensitivity) with price-path visualization helper + auto-generated plot in reports/; fresh run + report update; previous: pro-UI MM profit chart under price + sortable positions + Vercel prep + README boilerplate cleanup).
 **Maintainer note**: Treat this file as living documentation. Keep it concise but actionable. Update it whenever architecture, tooling, or scope meaningfully changes.

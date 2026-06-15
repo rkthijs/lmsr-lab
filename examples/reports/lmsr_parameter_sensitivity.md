@@ -103,16 +103,36 @@ sens = parameter_sensitivity_analysis(true_p=0.75, b_values=[10, 50, 200])
 print_parameter_sensitivity_table(sens)
 ```
 
+Running the module now also generates a price-path overlay plot (see below).
+
+## Visualizations (New for #1)
+
+To make the "volatility vs. sluggish" effect obvious, a dedicated plotting helper was added:
+
+```python
+from examples.experiments import parameter_sensitivity_analysis, plot_b_sweep_price_paths
+sens = parameter_sensitivity_analysis(...)
+plot_b_sweep_price_paths(sens)   # saves PNG by default to reports/
+```
+
+![Price path sensitivity to b](lmsr_param_sens_price_paths.png)
+
+- Steep wiggly lines (low b): large per-trade moves, high slippage/volatility.
+- Nearly flat lines (high b): requires many more trades (volume) before price moves meaningfully.
+
+The plot is automatically produced when running the experiments demo (saved to `examples/reports/lmsr_param_sens_price_paths.png`).
+
 Future extensions (see sibling todos):
 - Monte Carlo over trader count / belief noise
-- Full price-path plots and impact-vs-volume curves
-- Same analysis on the 300-round bot demo and other deep histories
+- Impact-vs-cumulative-volume curves (already have the data in `impacts`)
+- Same analysis on the 300-round bot demo and other deep histories using `replay_history`
 - Direct comparison of "economic slowness" (volume per % move) against a simple order-book model
 
 ## Files Changed / Related
 
-- `examples/experiments.py` — core implementation + documented results block
+- `examples/experiments.py` — core implementation + documented results block + `plot_b_sweep_price_paths`
 - `examples/reports/lmsr_parameter_sensitivity.md` — this report
-- Related: `replay_history.py`, `src/lmsr/adaptive.py`, `src/lmsr/simulator.py`, deep histories in `trade_histories/`
+- `examples/reports/lmsr_param_sens_price_paths.png` — new visual artifact
+- Related: `replay_history.py` (re-uses similar plotting style), `src/lmsr/adaptive.py`, deep histories in `trade_histories/`
 
-This is the first of the five key learnings to be turned into a runnable, documented experiment. The others (Continuous Liquidity, Capital Efficiency, Scalability, Risk Management) have skeletons and are ready for the same treatment.
+This is the first of the five key learnings to be turned into a runnable, documented experiment with supporting visuals. The others (Continuous Liquidity, Capital Efficiency, Scalability, Risk Management) have skeletons and are ready for the same treatment.
