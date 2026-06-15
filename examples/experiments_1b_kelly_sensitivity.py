@@ -124,10 +124,18 @@ def kelly_adaptive_sensitivity_on_history(
     and impacts are determined by the adaptive liquidity rule chosen for the market.
     """
     if adaptive_strats is None:
+        # MUST BE IDENTICAL to the adaptive_strats dict in experiments.py (for 1.C)
+        # to ensure 1.C and 1.D use exactly the same set of strategies for consistency.
         adaptive_strats = {
+            "Bounded(Linear α=0.03)": BoundedB(LinearVolumeB(alpha=0.03, min_b=5), min_b=5, max_b=500),
             "Bounded(Linear α=0.06)": BoundedB(LinearVolumeB(alpha=0.06, min_b=8), min_b=8, max_b=400),
+            "Bounded(Linear α=0.12)": BoundedB(LinearVolumeB(alpha=0.12, min_b=8), min_b=8, max_b=400),
+            "Bounded(Linear α=0.25)": BoundedB(LinearVolumeB(alpha=0.25, min_b=10), min_b=10, max_b=350),
+            "Bounded(Sqrt α=0.05)": BoundedB(SqrtVolumeB(alpha=0.05, min_b=8), min_b=8, max_b=400),
+            "Bounded(Sqrt α=0.15)": BoundedB(SqrtVolumeB(alpha=0.15, min_b=8), min_b=8, max_b=400),
+            "Bounded(Log α=4)": BoundedB(LogVolumeB(alpha=4.0, min_b=8), min_b=8, max_b=400),
             "Bounded(Log α=8)": BoundedB(LogVolumeB(alpha=8.0, min_b=8), min_b=8, max_b=400),
-            "Bounded(Sqrt α=0.10)": BoundedB(SqrtVolumeB(alpha=0.10, min_b=8), min_b=8, max_b=400),
+            "Bounded(Log α=16)": BoundedB(LogVolumeB(alpha=16.0, min_b=8), min_b=8, max_b=400),
         }
 
     h = load_history(history_path)
@@ -204,7 +212,7 @@ def run_1b_demo(b_values: list[float] | None = None) -> None:
 
         print("  (Plots for 1.B can be generated with the replay_history tools, e.g.)\n"
               "  # python -m examples.replay_history examples/trade_histories/kelly_high_activity.json "
-              "--b 10,50,200,800 --plot --save-plot reports/1b_...png")
+              "--b 10,50,200,800 --plot --save-plot reports/parameter_sensitivity/1b_...png")
 
     # === 1.D: Adaptive b with true Kelly ===
     print("\n\n=== 1.D. Adaptive b with True Kelly ===\n")
@@ -215,18 +223,68 @@ def run_1b_demo(b_values: list[float] | None = None) -> None:
     for path in KELLY_HISTORIES[:1]:  # one history for brevity in demo
         res = kelly_adaptive_sensitivity_on_history(path)
         print(f"\n--- {res['history']} (true_p ≈ {res.get('true_p')}) ---")
-        pretty = {"true_p": res.get("true_p") or 0.0, "fixed": {}, "adaptive": {}}
-        for name, m in res["adaptive"].items():
-            pretty["adaptive"][name] = {
-                "mean_brier": float("nan"),
-                "mean_impact": m["mean_impact"],
-                "max_impact": m["max_impact"],
-                "volume_for_5pct_move": m["volume_for_5pct_move"],
-                "volume_for_10pct_move": m["volume_for_10pct_move"],
-            }
-        print_parameter_sensitivity_table(pretty)
+        # For 1.D display: only the adaptive last 5 (no fixed b table, to focus on strategy comparison)
+        # only last 5 rows of the strategy column (low b / small alpha too noisy)
+        print("\nAdaptive (last 5 strategies):")
+        print(f"{'strategy':<30} {'mean_impact':>12} {'vol_5%':>10}")
+        print("-" * 60)
+        for name, m in list(res["adaptive"].items())[-5:]:
+            print(f"{name:<30} {m['mean_impact']:>12.6f} {m['volume_for_5pct_move']:>10.1f}")
 
     print("\nDone. See the report for the full 1.A–1.D structure and consolidated discussion.")
+
+    # Generate proper Kelly price + volume plots (the standard "price graph" used for Kelly histories
+    # in this project: P(Yes) on top + Yes/No volume bars below per trade step). This gives a clear
+    # visual of how the *same* real Kelly-sized trades react under different b (fixed or adaptive).
+    print("\nGenerating proper Kelly price+volume graph plots for 1.B and 1.D...")
+    main_history_path = "examples/trade_histories/kelly_high_activity.json"
+    h = load_history(main_history_path)
+    name = Path(main_history_path).stem
+
+    # 1.B: several fixed b values (low to very high)
+    fixed_bs = [10, 50, 200, 800]
+    fixed_results = {}
+    for b in fixed_bs:
+        snaps = replay_history(h, b=b)
+        fixed_results[b] = snaps
+    out_fixed = Path("examples/reports/parameter_sensitivity") / f"lmsr_param_sens_1b_{name}_fixed_price_volume.png"
+    plot_price_with_volume(
+        h,
+        fixed_results,
+        title=f"1.B: {name} – Fixed b (real Kelly trades)",
+        save_path=str(out_fixed),
+        show=False,
+    )
+    print(f"  Saved 1.B fixed Kelly price+volume plot → {out_fixed}")
+
+    # 1.D: adaptive strategies on the same real Kelly trades
+    # Use same as 1.C, but only the last 5 (higher growth / less noisy for low b / small alpha)
+    full_strats = {
+        "Bounded(Linear α=0.03)": BoundedB(LinearVolumeB(alpha=0.03, min_b=5), min_b=5, max_b=500),
+        "Bounded(Linear α=0.06)": BoundedB(LinearVolumeB(alpha=0.06, min_b=8), min_b=8, max_b=400),
+        "Bounded(Linear α=0.12)": BoundedB(LinearVolumeB(alpha=0.12, min_b=8), min_b=8, max_b=400),
+        "Bounded(Linear α=0.25)": BoundedB(LinearVolumeB(alpha=0.25, min_b=10), min_b=10, max_b=350),
+        "Bounded(Sqrt α=0.05)": BoundedB(SqrtVolumeB(alpha=0.05, min_b=8), min_b=8, max_b=400),
+        "Bounded(Sqrt α=0.15)": BoundedB(SqrtVolumeB(alpha=0.15, min_b=8), min_b=8, max_b=400),
+        "Bounded(Log α=4)": BoundedB(LogVolumeB(alpha=4.0, min_b=8), min_b=8, max_b=400),
+        "Bounded(Log α=8)": BoundedB(LogVolumeB(alpha=8.0, min_b=8), min_b=8, max_b=400),
+        "Bounded(Log α=16)": BoundedB(LogVolumeB(alpha=16.0, min_b=8), min_b=8, max_b=400),
+    }
+    adaptive_strats_for_plot = dict(list(full_strats.items())[-5:])  # only last 5 rows of strategy column
+
+    adaptive_results = {}
+    for strat_name, strat in adaptive_strats_for_plot.items():
+        snaps = replay_history(h, b=strat)
+        adaptive_results[strat_name] = snaps
+    out_adapt = Path("examples/reports/parameter_sensitivity") / f"lmsr_param_sens_1d_{name}_adaptive_price_volume.png"
+    plot_price_with_volume(
+        h,
+        adaptive_results,
+        title=f"1.D: {name} – Adaptive b (real Kelly trades)",
+        save_path=str(out_adapt),
+        show=False,
+    )
+    print(f"  Saved 1.D adaptive Kelly price+volume plot → {out_adapt}")
 
 
 if __name__ == "__main__":

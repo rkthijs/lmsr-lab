@@ -702,11 +702,14 @@ def print_parameter_sensitivity_table(results: dict[str, Any]) -> None:
 
 def plot_b_sweep_price_paths(
     results: dict[str, Any],
-    title: str = "LMSR Price Path Sensitivity to Liquidity Parameter b",
-    save_path: str | None = "examples/reports/lmsr_param_sens_price_paths.png",
+    title: str = "LMSR Price Path Sensitivity to Fixed Liquidity Parameter b (1.A)",
+    save_path: str | None = "examples/reports/parameter_sensitivity/lmsr_param_sens_fixed.png",
     show: bool = False,
 ) -> None:
-    """Plot overlaid price paths from a parameter_sensitivity_analysis result.
+    """Plot overlaid price paths for fixed b values from a parameter_sensitivity_analysis result.
+
+    This is the 1.A plot (fixed b with approximate Kelly). It contains *only* fixed-b curves.
+    Adaptive strategies are plotted separately via plot_adaptive_strategies (1.C).
 
     Visualizes the core of the Parameter Sensitivity learning:
     - Low b: wild swings (high volatility/slippage)
@@ -731,14 +734,6 @@ def plot_b_sweep_price_paths(
         steps = list(range(len(series)))
         plt.plot(steps, series, linewidth=1.4, marker=".", markersize=3, label=f"b = {b}")
 
-    # Optionally overlay one adaptive if present and has series
-    adaptive = results.get("adaptive", {})
-    for name, data in list(adaptive.items())[:1]:  # just the first for visual clarity
-        series = data.get("price_series", [])
-        if series:
-            steps = list(range(len(series)))
-            plt.plot(steps, series, linewidth=1.8, linestyle="--", label=f"adaptive: {name}")
-
     plt.axhline(0.5, color="gray", linestyle=":", alpha=0.5, label="initial 50%")
     plt.xlabel("Trade step (cumulative)")
     plt.ylabel("P(Yes)")
@@ -751,7 +746,7 @@ def plot_b_sweep_price_paths(
     if save_path:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"  Saved parameter sensitivity price paths plot → {save_path}")
+        print(f"  Saved fixed-b price paths plot (1.A) → {save_path}")
 
     if show:
         plt.show()
@@ -762,7 +757,7 @@ def plot_b_sweep_price_paths(
 def plot_adaptive_strategies(
     results: dict[str, Any],
     title: str = "LMSR Adaptive Liquidity Strategies (Price Paths)",
-    save_path: str | None = "examples/reports/lmsr_param_sens_adaptive.png",
+    save_path: str | None = "examples/reports/parameter_sensitivity/lmsr_param_sens_adaptive.png",
     show: bool = False,
 ) -> None:
     """Plot price paths for adaptive strategies only (separate from fixed b sweep).
@@ -871,7 +866,7 @@ def main() -> None:
     # Separate plots for clarity (1.A fixed vs 1.C adaptive)
     plot_b_sweep_price_paths(
         sens,
-        save_path="examples/reports/lmsr_param_sens_fixed.png",
+        save_path="examples/reports/parameter_sensitivity/lmsr_param_sens_fixed.png",
         title="1.A: LMSR Price Path Sensitivity to Fixed Liquidity Parameter b (approx Kelly)"
     )
     plot_adaptive_strategies(sens)
@@ -893,7 +888,7 @@ Reproduce with: `python examples/experiments.py`)
 
 Note: In later runs the same seed produces identical tables. A price-path visualization
 helper (`plot_b_sweep_price_paths`) was added to directly illustrate the volatility vs
-sluggish effect for this experiment (saved under examples/reports/).
+sluggish effect for this experiment (saved under examples/reports/parameter_sensitivity/).
 
 
 Setup
