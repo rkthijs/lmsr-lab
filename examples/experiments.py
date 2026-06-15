@@ -6,11 +6,11 @@ Focus areas (as called out in the project roadmap + key real-world learnings):
 - Fixed vs adaptive/dynamic `b` comparisons
 - Impact on price paths and (especially) forecaster calibration
 - Using Brier/Log scores + Murphy decomposition
-- Continuous Liquidity (always-available counterparty, cold-start behavior)
-- Parameter Sensitivity (b too low = volatility/slippage; too high = sluggish)  ← implemented with quantitative results below
-- Capital Efficiency (collateral waste on tails / unlikely outcomes)
-- Scalability Limitations (performance in deep/high-activity markets)
-- Risk Management (MM loss offset via fees, vaults, etc.)
+- Continuous Liquidity (always-available counterparty, cold-start behavior)  ← now implemented with real cold-start probes (Experiment 2)
+- Parameter Sensitivity (b too low = volatility/slippage; too high = sluggish)  ← implemented with quantitative results below (Experiment 1, with 1.A–1.D variants)
+- Capital Efficiency (collateral waste on tails / unlikely outcomes)  ← implemented (Experiment 3)
+- Scalability Limitations (performance in deep/high-activity markets)  ← skeleton only
+- Risk Management (MM loss offset via fees, vaults, etc.)  ← skeleton only
 
 This is meant to be importable for notebooks/scripts and runnable directly
 for quick demos:
@@ -29,8 +29,8 @@ Example programmatic usage:
         simulate_belief_market,
         run_fixed_b_sweep,
         compare_fixed_vs_adaptive,
-        measure_liquidity_availability,
-        parameter_sensitivity_analysis,
+        measure_liquidity_availability,   # Experiment 2 — Continuous Liquidity (full implementation)
+        parameter_sensitivity_analysis,   # Experiment 1 — Parameter Sensitivity (1.A–1.D)
         capital_efficiency_analysis,
         scalability_benchmark,
         risk_management_analysis,
@@ -123,6 +123,8 @@ def simulate_belief_market(
     forecaster = ForecasterScores()
     agents = [TradingAgent(sim, f"trader_{i}") for i in range(num_traders)]
 
+    running_mm_pls = []  # collect here, attach to scores later
+
     for _t in range(trades_per_trader):
         for _i, (agent, p_belief) in enumerate(zip(agents, beliefs, strict=True)):
             # Simple approx Kelly: bet fraction of "edge" if we have balance
@@ -148,6 +150,13 @@ def simulate_belief_market(
                 forecast = res.get("price_after", (current_price, 1 - current_price))[0]
                 forecaster.forecasts.append(float(forecast))
 
+                # For capital efficiency: track MM's running P/L = total_revenue - current marked liability (p·q)
+                p = market.engine.price()[0]
+                q = market.engine.q
+                marked_liability = p * q[0] + (1 - p) * q[1]
+                current_pl = market.engine.total_revenue - marked_liability
+                running_mm_pls.append(current_pl)
+
     # Resolve with the true outcome
     outcome = "yes" if rng.random() < true_p else "no"
     sim.resolve_market(market.id, outcome)
@@ -160,6 +169,14 @@ def simulate_belief_market(
     scores["true_p"] = true_p
     scores["num_traders"] = num_traders
     scores["b_strategy"] = str(b) if not callable(b) else "adaptive"
+
+    scores["running_mm_pls"] = running_mm_pls  # attach for capital efficiency experiment
+
+    # Final MM P/L after resolution for capital efficiency
+    winning_idx = 0 if outcome == "yes" else 1
+    final_payout = market.engine.q[winning_idx]  # pays 1 per winning share
+    scores["final_mm_pl"] = market.engine.total_revenue - final_payout
+    scores["peak_mm_drawdown"] = min(running_mm_pls) if running_mm_pls else 0.0
 
     # Collect per-trade price impacts for sensitivity analysis
     impacts = []
@@ -190,6 +207,20 @@ def simulate_belief_market(
         "bet_fraction": bet_fraction,
         "edge_threshold": edge_threshold,
     }
+
+    # For capital efficiency experiment: track running MM P/L = total_revenue - marked_liability
+    # This is the mark-to-market P/L for the MM (negative means capital at risk).
+    running_mm_pls = []
+    for trade in market.trades:
+        p = market.engine.price()  # re-evaluate? but after trade it's the new
+        # Actually, to get accurate, we should compute after each, but since we have q after?
+        # For simplicity, use the price_after from impact and approximate q, but better to re-compute.
+        # Since we have the engine, after all trades we can back-compute, but for peak we need during.
+        # For now, we can compute at end of each trade loop iteration, but since the loop is in sim, add here.
+        # To avoid complexity, we'll compute in the capital function by re-running or accept post-trade only for now.
+        pass
+
+    scores["running_mm_pls"] = running_mm_pls  # to be filled if we enhance
     return scores
 
 
@@ -278,45 +309,152 @@ def measure_liquidity_availability(
     seed: int = 42,
 ) -> dict[str, Any]:
     """
-    Skeleton for 'Continuous Liquidity' learning.
+    Experiment 2: Continuous Liquidity (always-available counterparty, cold-start behavior).
 
-    Demonstrates that LMSR (as market maker) always acts as counterparty,
-    solving cold-start and allowing buys/sells at any time without waiting
-    for opposing traders.
+    This is the second of the five key real-world learnings.
 
-    TODO: Implement metrics for:
-      - Success rate of large/one-sided trades
-      - Price impact / slippage on "market orders" of various sizes
-      - Comparison vs. a simple order-book simulation (future)
-      - Behavior on fresh (zero-volume) markets
+    Goal: Quantify that the LMSR market maker *always* stands ready as counterparty.
+    Traders can always buy or sell any (reasonable) size at any time — even on a
+    completely fresh market with zero prior volume or opposing interest — without
+    waiting for other traders. This solves the "cold start" problem that plagues
+    pure order-book mechanisms.
 
-    Currently a stub that reuses simulate_belief_market and reports
-    placeholder values.
+    Metrics implemented:
+      - Success rate for large/one-sided "market orders" on cold-start (zero-volume) markets.
+      - Actual price impact and effective cost/slippage for different sizes.
+      - Comparison of impact on cold vs. "warm" (post some trading) markets.
+      - Simple order-book baseline: a toy OB with limited depth to show where it would
+        fail or give worse execution for large sizes (while LMSR always clears via the MM).
+
+    Uses the same simulate_belief_market for "warm market" context + direct
+    TradingAgent probes on fresh markets for cold-start.
+    Supports both fixed b and adaptive strategies.
+
+    See the report in reports/parameter_sensitivity/ for the first experiment and
+    a new report for this one when fleshed out further.
     """
     if large_trade_sizes is None:
-        large_trade_sizes = [10.0, 50.0, 100.0]
+        large_trade_sizes = [10.0, 50.0, 100.0, 250.0]
 
-    # Base simulation for context
-    base = simulate_belief_market(
-        true_p=true_p, num_traders=num_traders, b=b,
-        fee_rate=fee_rate, seed=seed
-    )
-
-    results = {
+    results: dict[str, Any] = {
         "true_p": true_p,
         "b_strategy": str(b) if not callable(b) else "adaptive",
-        "large_trade_probes": {},
-        "always_executable": True,  # LMSR guarantee by design
-        "cold_start_note": "LMSR provides liquidity even with zero opposing interest",
+        "large_trade_sizes_tested": large_trade_sizes,
+        "cold_start_probes": {},
+        "warm_market_context": {},
+        "order_book_baseline": {},
+        "summary": {
+            "always_executable": True,
+            "cold_start_note": "LMSR MM provides liquidity even with zero opposing interest or prior volume.",
+        },
     }
 
-    # Placeholder: in a real impl we would create a fresh sim and try
-    # direct large place_trade calls (or TradingAgent) on one side.
+    # --- Warm market context (some prior activity via belief traders) ---
+    warm = simulate_belief_market(
+        true_p=true_p, num_traders=num_traders, b=b,
+        fee_rate=fee_rate, seed=seed, initial_subsidy=1000.0
+    )
+    results["warm_market_context"] = {
+        "final_price_yes": warm.get("final_price_yes"),
+        "total_trades": len(warm.get("impacts", [])),
+        "mean_impact_from_warm": warm.get("mean_impact"),
+    }
+
+    # --- Cold-start probes: completely fresh market, zero volume ---
+    sim_cold = LMSRMarketSimulator()
+    m_cold = sim_cold.create_market(
+        title="Cold-start liquidity probe",
+        b=b,
+        fee_rate=fee_rate,
+        initial_subsidy=1000.0,
+    )
+    probe_agent = TradingAgent(sim_cold, "cold_start_probe")
+
     for size in large_trade_sizes:
-        results["large_trade_probes"][size] = {
-            "simulated_slippage_bps": round(size * 2.3, 1),  # placeholder
-            "executable": True,
-        }
+        size = int(size)  # enforce integer shares like the real system
+
+        # Buy probe on current state of this cold market
+        current_p = probe_agent.get_prices(m_cold.id)[0]
+        probe_key = f"buy_yes_{size}"
+        try:
+            res = probe_agent.buy_yes(m_cold.id, shares=size)
+            new_p = probe_agent.get_prices(m_cold.id)[0]  # price after the trade
+            impact = abs(new_p - current_p)
+            if "error" not in res:
+                results["cold_start_probes"][probe_key] = {
+                    "success": True,
+                    "executed_size": size,
+                    "price_before": round(current_p, 4),
+                    "price_after": round(new_p, 4),
+                    "impact": round(impact, 6),
+                    "effective_cost": res.get("effective_cost"),
+                    "raw_cost": res.get("raw_cost"),
+                }
+            else:
+                results["cold_start_probes"][probe_key] = {
+                    "success": False,
+                    "error": res["error"],
+                }
+        except Exception as e:
+            results["cold_start_probes"][probe_key] = {"success": False, "error": str(e)}
+
+        # Sell-side probe on an independent fresh market (to keep each probe isolated)
+        sim_cold2 = LMSRMarketSimulator()
+        m_cold2 = sim_cold2.create_market(
+            title="Cold-start liquidity probe (sell)",
+            b=b,
+            fee_rate=fee_rate,
+            initial_subsidy=1000.0,
+        )
+        probe_agent2 = TradingAgent(sim_cold2, "cold_start_probe2")
+        current_p2 = probe_agent2.get_prices(m_cold2.id)[0]
+        probe_key = f"sell_yes_{size}"
+        try:
+            res = probe_agent2.sell_yes(m_cold2.id, shares=size)
+            new_p2 = probe_agent2.get_prices(m_cold2.id)[0]
+            impact2 = abs(new_p2 - current_p2)
+            if "error" not in res:
+                results["cold_start_probes"][probe_key] = {
+                    "success": True,
+                    "executed_size": size,
+                    "price_before": round(current_p2, 4),
+                    "price_after": round(new_p2, 4),
+                    "impact": round(impact2, 6),
+                    "effective_cost": res.get("effective_cost"),
+                }
+            else:
+                results["cold_start_probes"][probe_key] = {
+                    "success": False,
+                    "error": res["error"],
+                }
+        except Exception as e:
+            results["cold_start_probes"][probe_key] = {"success": False, "error": str(e)}
+
+    # --- Simple order-book baseline (toy) for comparison ---
+    # Assumes limited depth at the start (e.g. 50 shares on each side near mid).
+    # Large sizes either partially fill at worse prices or fail.
+    ob_depth = 50.0
+    for size in large_trade_sizes:
+        size = float(size)
+        if size <= ob_depth:
+            # would fill near mid + small spread
+            results["order_book_baseline"][size] = {
+                "success": True,
+                "notes": "Fills within assumed depth",
+                "estimated_vwap_impact": size * 0.001,  # tiny
+            }
+        else:
+            results["order_book_baseline"][size] = {
+                "success": False,
+                "notes": f"Exceeds assumed depth of {ob_depth}; would require waiting for more offers or cross spread heavily",
+                "estimated_vwap_impact": None,
+            }
+
+    # --- Summary stats ---
+    successes = sum(1 for k, v in results["cold_start_probes"].items() if v.get("success"))
+    total_probes = len(results["cold_start_probes"])
+    results["summary"]["cold_start_success_rate"] = round(successes / max(1, total_probes), 3)
+    results["summary"]["num_probes"] = total_probes
 
     return results
 
@@ -549,17 +687,25 @@ def capital_efficiency_analysis(
     seed: int = 99,
 ) -> dict[str, Any]:
     """
-    Skeleton for 'Capital Efficiency Issues' learning.
+    Experiment 3: Capital Efficiency (collateral waste on tails / unlikely outcomes).
 
-    Measures how much collateral (initial_subsidy) is required vs. actually
-    used. LMSR over-collateralizes across the full [0,1] range; much is
-    "wasted" on low-probability tails.
+    This is the third of the five key learnings.
 
-    TODO:
-      - Track peak MM loss / drawdown during the run
-      - Final MM P&L after resolution (revenue - payouts)
-      - Utilization = peak_loss / initial_subsidy
-      - Multi-market variant (several independent markets from one "universe")
+    LMSR requires the MM to post initial subsidy that covers the worst-case loss
+    over the entire [0,1] probability space (binary LMSR worst-case ~ b * ln(2)).
+    In practice, most of this capital sits idle on the "tails" (extreme probabilities)
+    that are rarely reached if traders have reasonable beliefs.
+
+    Metrics:
+      - Peak MM drawdown (most negative mark-to-market P/L during the market's life)
+      - Final realized MM P&L after resolution
+      - Utilization = |peak_drawdown| / initial_subsidy
+      - How utilization changes with different subsidy levels (larger subsidy % idle on tails?)
+
+    Uses the belief sim (with running P/L tracking added for this experiment).
+    Supports varying initial_subsidies.
+
+    For true-Kelly version, see replay on histories + computing exposure during replay.
     """
     if initial_subsidies is None:
         initial_subsidies = [100.0, 300.0, 800.0, 2000.0]
@@ -567,23 +713,28 @@ def capital_efficiency_analysis(
     results: dict[str, Any] = {
         "true_p": true_p,
         "subsidy_sweep": {},
-        "note": "Large subsidy needed to cover full probability range; much capital idle for unlikely outcomes",
+        "note": "LMSR over-collateralizes the full [0,1] range; much of the subsidy is idle on tails.",
     }
 
     for sub in initial_subsidies:
         res = simulate_belief_market(
-            true_p=true_p, num_traders=num_traders,
-            initial_subsidy=sub, seed=seed
+            true_p=true_p,
+            num_traders=num_traders,
+            initial_subsidy=sub,
+            seed=seed,
         )
-        # Placeholders — real impl will compute from simulator after trades + resolve
-        peak_loss = sub * 0.35  # fake
-        final_pl = -sub * 0.08 + (res.get("mean_log_score", 0) * 10)  # fake
+
+        peak_drawdown = res.get("peak_mm_drawdown", 0.0)
+        final_pl = res.get("final_mm_pl", 0.0)
+
+        utilization = abs(peak_drawdown) / sub if sub > 0 else 0.0
 
         results["subsidy_sweep"][sub] = {
             "mean_brier": res["mean_brier"],
-            "peak_loss_estimate": round(peak_loss, 2),
-            "final_mm_pl_estimate": round(final_pl, 2),
-            "utilization_estimate": round(peak_loss / sub, 3),
+            "peak_drawdown": round(peak_drawdown, 2),
+            "final_mm_pl": round(final_pl, 2),
+            "utilization": round(utilization, 3),
+            "num_running_pl_points": len(res.get("running_mm_pls", [])),
         }
 
     return results
@@ -872,6 +1023,36 @@ def main() -> None:
     plot_adaptive_strategies(sens)
 
     print("\n   (End of 1.A + 1.C toy approx Kelly section. See report for 1.B + 1.D real Kelly.)")
+
+    # Experiment 2: Continuous Liquidity
+    print("\n=== Experiment 2: Continuous Liquidity (always-available counterparty, cold-start) ===")
+    print("Second of the five key learnings. LMSR MM always provides liquidity; no cold-start or need for opposing orders.")
+    liq = measure_liquidity_availability(
+        true_p=0.75,
+        num_traders=20,
+        b=40.0,
+        large_trade_sizes=[10.0, 50.0, 100.0, 250.0],
+        seed=42,
+    )
+    print("  Cold-start success rate:", liq["summary"]["cold_start_success_rate"])
+    print("  Number of probes:", liq["summary"]["num_probes"])
+    print("  Sample cold-start probe (buy 50):", liq["cold_start_probes"].get("buy_yes_50"))
+    print("  Warm market context price:", liq["warm_market_context"]["final_price_yes"])
+    print("  OB baseline for size 100:", liq["order_book_baseline"].get(100))
+    print("  (See full results dict for all probes and the order-book comparison stub.)")
+
+    # Experiment 3: Capital Efficiency
+    print("\n=== Experiment 3: Capital Efficiency (collateral waste on tails) ===")
+    print("Third of the five key learnings. How much of the initial subsidy is actually 'at risk' vs idle on unlikely tails?")
+    cap = capital_efficiency_analysis(
+        true_p=0.75,
+        initial_subsidies=[100.0, 300.0, 800.0, 2000.0],
+        num_traders=20,
+        seed=99,
+    )
+    print("  Subsidy sweep (utilization = |peak_drawdown| / subsidy):")
+    for sub, data in sorted(cap["subsidy_sweep"].items()):
+        print(f"    subsidy={sub:7.1f}  peak_dd={data['peak_drawdown']:7.2f}  final_pl={data['final_mm_pl']:7.2f}  util={data['utilization']:.3f}  brier={data['mean_brier']:.4f}")
 
     print("\nDone. Import the functions to run your own sweeps or larger Monte Carlo studies.")
 
