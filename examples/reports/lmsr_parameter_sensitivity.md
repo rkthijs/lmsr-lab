@@ -1,8 +1,12 @@
-# LMSR Parameter Sensitivity Experiment
+# LMSR Parameter Sensitivity Experiment (1.A + 1.B)
 
-**Date**: June 2026  
+**Date**: June 2026 (1.A) / updated later for 1.B  
 **Focus**: Key Learning #2 — Parameter Sensitivity  
-**Status**: First of the five key learnings implemented and documented  
+**Variants**:
+- **1.A** (original): Toy "simple approx Kelly" in small controlled simulations.
+- **1.B** (companion): Real Kelly sizing replayed on the project's generated histories.
+
+**Status**: Core of the learning implemented and documented in two complementary forms. 
 
 ## Background & Key Learning
 
@@ -39,7 +43,7 @@ This experiment quantifies that claim using the project's simulator, adaptive st
 
 **Bet sizing (critical for interpreting the volume numbers)**
 
-The "volume" here is not arbitrary — it comes from the actual shares traded by the simulated agents:
+The "volume" numbers in this experiment are produced by a *very simplified toy approximation* to Kelly sizing inside `simulate_belief_market`:
 
 ```python
 edge = p_belief - current_price
@@ -49,11 +53,27 @@ size = min(max_bet_size, max(min_bet_size, balance * bet_fraction * abs(edge) / 
 # defaults: max=15, min=2, bet_fraction=0.15
 ```
 
-These parameters are now first-class in `parameter_sensitivity_analysis(...)` and `simulate_belief_market(...)` and are returned under `results["bet_sizing"]`.
+**Why these defaults?**
 
-This is why low-b volumes were previously all exactly 15 (first big bet crossed the threshold) and why we now document them + use interpolation for the crossing trade.
+- This is **not** the real Kelly formula used elsewhere in the project (see `examples/generate_kelly_histories.py`, which uses the proper `(p - q) / (1 - q)` fraction of bankroll).
 
-(The report previously omitted any description of bet sizes.)
+- The toy formula is deliberately tuned for a **small, controlled demo**:
+  - Initial user balances are ~1000.
+  - With `bet_fraction=0.15` + the `/0.2` scaling, a "strong conviction" 20pp edge produces `1000 * 0.15 * 0.2 / 0.2 = 150`, which is then capped at the `max_bet_size=15`.
+  - The result is bounded trade sizes (2–15 shares) so that:
+    - 25 traders × a few trades each produces only modest total volume (typically 50–200 shares).
+    - The `vol_5%` / `vol_10%` metrics stay in a readable numeric range.
+    - Price paths in plots remain easy to interpret without thousands of trades.
+  - `min=2` prevents dust trades. The `0.03` edge threshold avoids trading on pure noise.
+  - The `/0.2` is a crude normalization that treats a 20 percentage point mispricing as a "full strength" signal.
+
+- These numbers were chosen to be "moderate" relative to the b-recommendation tool in the Streamlit UI (which defaults to a "strong conviction bet" of ~80), but scaled way down for a lightweight pedagogical sensitivity study.
+
+- **Important**: the absolute bet sizes are secondary. What matters for the learning is that the *same* sizing rule is applied across all b values, so differences in impact and volume-to-move are attributable to the liquidity parameter `b`, not to changing trader behavior.
+
+These parameters (and the resulting `bet_sizing` dict) are now exposed so that 1.B (real Kelly) and future experiments can be compared apples-to-apples.
+
+(The report previously contained no explanation of where the ~15-scale volumes came from.)
 
 All code lives in `examples/experiments.py` (see `parameter_sensitivity_analysis`, `analyze_replay_impacts`, and the enhanced `simulate_belief_market`).
 
@@ -119,22 +139,71 @@ This experiment provides quantitative backing for why `b` selection is critical 
 - **Scalability**: In very deep/high-volume markets the high-`b` regime becomes especially problematic (tiny price moves despite enormous activity), which is consistent with reports of platforms moving away from LMSR at scale.
 - **Risk Management**: The volatility at low `b` increases the chance of large adverse moves for the market maker, reinforcing the need for fees and other mitigations.
 
-## How to Reproduce & Extend
+## Experiment 1.A — Toy "Simple Approx Kelly" (controlled small simulations)
+
+See the original sections above for setup, bet sizing rationale, and results.
+
+## Experiment 1.B — Real Kelly Sizing (replayed on generated histories)
+
+**Second variant ("1.B")** using the *actual* Kelly criterion from the project.
+
+- Traders size using the proper formula from `examples/generate_kelly_histories.py`:
+  `f = (p - q) / (1 - q)` (fraction of bankroll).
+- We take the *exact same sequence of share quantities* from the pre-generated Kelly histories (`kelly_high_activity.json`, `kelly_long_trend.json`, `kelly_rug_pull.json`, ...).
+- We replay those fixed trades at every b in the expanded sweep using `replay_history(..., b=...)`.
+- This answers: "If real Kelly bettors (with realistic position sizes) are active, how sensitive are price volatility and 'speed' to the choice of b?"
+
+Run the dedicated 1.B module:
 
 ```bash
-python examples/experiments.py
+python examples/experiments_1b_kelly_sensitivity.py
 ```
 
-The function is also directly importable:
+It produces tables using the same metrics as 1.A (mean/max impact + interpolated volume to 5%/10% move).
+
+### Selected Results from 1.B (kelly_high_activity history)
+
+```
+    b    mean_impact  max_impact   vol_5%   vol_10%
+  1.0       0.1751      1.0000     15.3     30.6
+ 10.0       0.6628      1.0000     15.3     30.6
+ 50.0       0.4226      1.0000     16.8     33.6
+100.0       0.4026      0.9991     23.8     47.5
+200.0       0.2859      0.9594     41.9     83.9
+400.0       0.1810      0.7509     81.0    211.2
+800.0       0.1110      0.4533    199.8    743.5
+1600.0      0.0561      0.2398    728.7   1347.9
+```
+
+(See the full output of `experiments_1b_kelly_sensitivity.py` for the other histories. Low-b cases often hit the 1.0 price boundary; high-b cases require dramatically more volume.)
+
+### Comparison 1.A vs 1.B
+
+- The qualitative story is the same in both: low b → high per-trade impact (volatile/slippage), high b → very large volume required for price discovery (sluggish).
+- With *real* Kelly sizing the absolute volumes are larger and more varied (realistic position building), making the "economic slowness" of high b even more obvious (hundreds to thousands of shares needed for a 10% move).
+- The toy 1.A sizing (capped ~15) was useful for a clean, small-volume pedagogical study. 1.B shows the phenomenon survives when traders use proper bankroll-proportional sizing.
+
+## How to Reproduce & Extend (both 1.A and 1.B)
+
+```bash
+# 1.A (toy approx Kelly, small controlled sims + price-path plot)
+python examples/experiments.py
+
+# 1.B (real Kelly histories, replay at many b values)
+python examples/experiments_1b_kelly_sensitivity.py
+```
+
+The main analysis functions are importable. Use the expanded b list for full effect:
 
 ```python
-from examples.experiments import parameter_sensitivity_analysis, print_parameter_sensitivity_table
-
-sens = parameter_sensitivity_analysis(true_p=0.75, b_values=[10, 50, 200])
+from examples.experiments import parameter_sensitivity_analysis
+sens = parameter_sensitivity_analysis(b_values=[1,5,10,25,50,100,200,400,800,1600])
 print_parameter_sensitivity_table(sens)
-```
 
-Running the module now also generates a price-path overlay plot (see below).
+# For 1.B style analysis on any history
+from examples.experiments_1b_kelly_sensitivity import kelly_sensitivity_on_history
+res = kelly_sensitivity_on_history("examples/trade_histories/kelly_high_activity.json")
+```
 
 ## Visualizations (New for #1)
 

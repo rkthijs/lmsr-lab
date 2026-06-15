@@ -351,10 +351,26 @@ def parameter_sensitivity_analysis(
       size = min(max_bet_size, max(min_bet_size, balance * bet_fraction * |edge| / 0.2))
       (default max=15, min=2, fraction=0.15, skip if |edge|<0.03)
 
+    Why these defaults make sense (for this controlled study):
+      - Not the real Kelly (see examples/generate_kelly_histories.py which uses
+        the proper (p-q)/(1-q) bankroll fraction).
+      - Tuned for a *small pedagogical simulation* (25 traders, balance~1000):
+        a 20pp edge produces ~150 before the max=15 cap. This keeps total volume
+        in the 50-200 range so vol_5%/vol_10% numbers are readable and price-path
+        plots stay clean.
+      - The /0.2 is a normalization hack that treats a "20 cent" mispricing as
+        full-strength. min=2 avoids dust; the 0.03 threshold avoids noise trades.
+      - Absolute sizes are secondary — the same rule is used for every b so
+        differences are due to the liquidity parameter.
+      - See the 1.B companion (experiments_1b_kelly_sensitivity.py) for the
+        version that uses real Kelly sizing on deeper histories.
+
     The volume_to_reach_* helpers use linear interpolation within the crossing
     trade for finer resolution when large bets cause big jumps.
 
     Also compares adaptive strategies (LinearVolumeB etc.).
+
+    See also: Experiment 1.B in experiments_1b_kelly_sensitivity.py (real Kelly).
     """
     if b_values is None:
         b_values = [1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 200.0, 400.0, 800.0, 1600.0]
@@ -812,7 +828,8 @@ Setup
 - Traders: 25 agents with noisy beliefs around true_p = 0.72
 - Trades per trader: 3 (Kelly-style sizing)
 - Fixed b sweep: [1, 5, 10, 25, 50, 100, 200, 400, 800, 1600] (expanded to probe extremes)
-- Bet sizing (now documented): size = min(max_bet_size=15, max(min_bet_size=2, balance * 0.15 * |edge| / 0.2)), skip if |edge|<0.03. This explains the ~15-scale volumes.
+- Bet sizing (now documented): size = min(max_bet_size=15, max(min_bet_size=2, balance * 0.15 * |edge| / 0.2)), skip if |edge|<0.03. This explains the ~15-scale volumes. (Full rationale in the function docstring and the report.)
+- See also Experiment 1.B (separate file experiments_1b_kelly_sensitivity.py) which uses the *real* Kelly formula on the generated kelly_*.json histories.
 - Adaptive comparators: Bounded(LinearVolumeB(alpha)) and Bounded(LogVolumeB)
 - Metrics collected:
   - mean_impact / max_impact = average / largest |Δp_yes| per trade

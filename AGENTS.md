@@ -225,5 +225,5 @@ When an agent is unsure about requirements, math, or design choices:
 
 ---
 
-**Last updated**: 2026-06-13 (back to research: extended experiment #1 (Parameter Sensitivity) with price-path visualization helper + auto-generated plot in reports/; fresh run + report update; previous: pro-UI MM profit chart under price + sortable positions + Vercel prep + README boilerplate cleanup).
+**Last updated**: 2026-06-13 (research: documented bet sizing rationale for exp #1; added Experiment 1.B as a separate file using real Kelly histories + replay at many b values; updated main report with 1.A vs 1.B comparison + full bet-sizing explanation; previous: granularity fix + pro-ui work).
 **Maintainer note**: Treat this file as living documentation. Keep it concise but actionable. Update it whenever architecture, tooling, or scope meaningfully changes.
