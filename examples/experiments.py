@@ -95,6 +95,10 @@ def simulate_belief_market(
     belief_noise: float = 0.12,
     seed: int | None = 42,
     initial_subsidy: float = 500.0,
+    min_bet_size: float = 2.0,
+    max_bet_size: float = 15.0,
+    bet_fraction: float = 0.15,
+    edge_threshold: float = 0.03,
 ) -> dict[str, Any]:
     """
     Simulate a market where traders have noisy beliefs around `true_p`.
@@ -124,12 +128,12 @@ def simulate_belief_market(
             # Simple approx Kelly: bet fraction of "edge" if we have balance
             current_price = agent.get_prices(market.id)[0]
             edge = p_belief - current_price
-            if abs(edge) < 0.03:  # too close to current price, skip
+            if abs(edge) < edge_threshold:  # too close to current price, skip
                 continue
 
             # Scale trade size by belief strength and remaining balance
             balance = agent.get_balance()
-            size = min(15.0, max(2.0, balance * 0.15 * abs(edge) / 0.2))
+            size = min(max_bet_size, max(min_bet_size, balance * bet_fraction * abs(edge) / 0.2))
 
             if edge > 0:
                 res = agent.buy_yes(market.id, shares=size)
@@ -180,6 +184,12 @@ def simulate_belief_market(
     scores["mean_impact"] = round(np.mean([i["impact"] for i in impacts]) if impacts else 0, 6)
     scores["max_impact"] = round(max((i["impact"] for i in impacts), default=0), 6)
     scores["final_price_yes"] = round(market.engine.price()[0], 4)
+    scores["bet_sizing"] = {
+        "min_bet_size": min_bet_size,
+        "max_bet_size": max_bet_size,
+        "bet_fraction": bet_fraction,
+        "edge_threshold": edge_threshold,
+    }
     return scores
 
 
@@ -202,6 +212,10 @@ def run_fixed_b_sweep(
             b=b,
             trades_per_trader=trades_per_trader,
             seed=seed,
+            min_bet_size=min_bet_size,
+            max_bet_size=max_bet_size,
+            bet_fraction=bet_fraction,
+            edge_threshold=edge_threshold,
         )
         results[b] = res
     return results
@@ -314,6 +328,11 @@ def parameter_sensitivity_analysis(
     trades_per_trader: int = 3,
     seed: int = 123,
     also_adaptive: bool = True,
+    # Bet sizing params (exposed for granularity experiments)
+    min_bet_size: float = 2.0,
+    max_bet_size: float = 15.0,
+    bet_fraction: float = 0.15,
+    edge_threshold: float = 0.03,
 ) -> dict[str, Any]:
     """
     Full implementation for 'Parameter Sensitivity' learning.
@@ -328,10 +347,17 @@ def parameter_sensitivity_analysis(
       - volume_for_5pct: approximate cumulative volume needed to move price 5% from start
       - volume_for_10pct: same for 10%
 
+    Bet sizing (simple approx Kelly, now configurable for granularity):
+      size = min(max_bet_size, max(min_bet_size, balance * bet_fraction * |edge| / 0.2))
+      (default max=15, min=2, fraction=0.15, skip if |edge|<0.03)
+
+    The volume_to_reach_* helpers use linear interpolation within the crossing
+    trade for finer resolution when large bets cause big jumps.
+
     Also compares adaptive strategies (LinearVolumeB etc.).
     """
     if b_values is None:
-        b_values = [5.0, 15.0, 40.0, 100.0, 250.0]
+        b_values = [1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 200.0, 400.0, 800.0, 1600.0]
 
     results: dict[str, Any] = {
         "true_p": true_p,
@@ -348,6 +374,10 @@ def parameter_sensitivity_analysis(
             b=b,
             trades_per_trader=trades_per_trader,
             seed=seed,
+            min_bet_size=min_bet_size,
+            max_bet_size=max_bet_size,
+            bet_fraction=bet_fraction,
+            edge_threshold=edge_threshold,
         )
         impacts = res.get("impacts", [])
         cum_vol = impacts[-1]["cumulative_volume"] if impacts else 0
@@ -385,6 +415,10 @@ def parameter_sensitivity_analysis(
                 b=strat,
                 trades_per_trader=trades_per_trader,
                 seed=seed,
+                min_bet_size=min_bet_size,
+                max_bet_size=max_bet_size,
+                bet_fraction=bet_fraction,
+                edge_threshold=edge_threshold,
             )
             impacts = res.get("impacts", [])
             cum_vol = impacts[-1]["cumulative_volume"] if impacts else 0
@@ -404,19 +438,48 @@ def parameter_sensitivity_analysis(
                 "price_series": price_series,
             }
 
+    results["bet_sizing"] = {
+        "min_bet_size": min_bet_size,
+        "max_bet_size": max_bet_size,
+        "bet_fraction": bet_fraction,
+        "edge_threshold": edge_threshold,
+    }
+
     return results
 
 
 def _volume_to_reach_delta_p(impacts: list[dict], target_delta: float = 0.05) -> float:
-    """Helper: cumulative volume at which |price - 0.5| first exceeds target_delta."""
+    """Helper: cumulative volume at which |price - 0.5| first exceeds target_delta.
+
+    Uses linear interpolation *within* the crossing trade for much finer
+    granularity. This solves the problem where large bet sizes (e.g. the
+    default max=15) cause the 5%/10% threshold to be crossed by the exact
+    same first trade for many low-b values (making vol_5% == vol_10% == 15).
+    """
     if not impacts:
         return float("inf")
     start_p = 0.5
-    cum = 0.0
+    prev_cum = 0.0
     for imp in impacts:
+        p_before = imp.get("price_before", start_p)
+        p_after = imp["price_after"]
+        size = abs(imp.get("size", 0))  # volume contributed by this trade
         cum = imp["cumulative_volume"]
-        if abs(imp["price_after"] - start_p) >= target_delta:
+        delta_before = abs(p_before - start_p)
+        delta_after = abs(p_after - start_p)
+
+        if delta_after >= target_delta > delta_before:
+            # crossed inside this trade -> interpolate
+            delta_span = delta_after - delta_before
+            if delta_span < 1e-12:
+                return cum
+            frac = (target_delta - delta_before) / delta_span
+            interp = prev_cum + frac * size
+            return round(interp, 1)
+
+        if delta_after >= target_delta:
             return cum
+        prev_cum = cum
     return cum  # never reached, return final volume
 
 
@@ -713,7 +776,7 @@ def main() -> None:
     print("\n4. Parameter Sensitivity Analysis (core of 'Parameter Sensitivity' learning)")
     sens = parameter_sensitivity_analysis(
         true_p=0.72,
-        b_values=[10, 25, 50, 100, 200],
+        b_values=[1, 5, 10, 25, 50, 100, 200, 400, 800, 1600],
         num_traders=25,
         trades_per_trader=3,
     )
@@ -748,7 +811,8 @@ Setup
 -----
 - Traders: 25 agents with noisy beliefs around true_p = 0.72
 - Trades per trader: 3 (Kelly-style sizing)
-- Fixed b sweep: [10, 25, 50, 100, 200]
+- Fixed b sweep: [1, 5, 10, 25, 50, 100, 200, 400, 800, 1600] (expanded to probe extremes)
+- Bet sizing (now documented): size = min(max_bet_size=15, max(min_bet_size=2, balance * 0.15 * |edge| / 0.2)), skip if |edge|<0.03. This explains the ~15-scale volumes.
 - Adaptive comparators: Bounded(LinearVolumeB(alpha)) and Bounded(LogVolumeB)
 - Metrics collected:
   - mean_impact / max_impact = average / largest |Δp_yes| per trade
@@ -757,12 +821,19 @@ Setup
 
 Fixed-b Results
 ---------------
-  b    mean_brier  mean_impact  max_impact   vol_5%   vol_10%
- 10.0     0.0591      0.1654      0.3176     15.0     15.0
- 25.0     0.0577      0.0831      0.1457     15.0     15.0
- 50.0     0.0612      0.0456      0.0744     15.0     30.0
-100.0     0.0732      0.0260      0.0374     30.0     45.0
-200.0     0.0849      0.0142      0.0187     45.0     90.0
+    b    mean_brier  mean_impact  max_impact   vol_5%   vol_10%
+  1.0       0.1500     0.500000    0.500000      1.5      3.0
+  5.0       0.1509     0.452574    0.452574      1.7      3.3
+ 10.0       0.0591     0.165429    0.317574      2.4      4.7
+ 25.0       0.0577     0.083079    0.145656      5.1     10.3
+ 50.0       0.0612     0.045614    0.074443     10.1     20.4
+100.0       0.0732     0.025968    0.037430     20.1     40.6
+200.0       0.0849     0.014195    0.018741     40.2     81.1
+400.0       0.1128     0.007937    0.009374     80.3    162.2
+800.0       0.1444     0.004297    0.004687    160.5    324.3
+1600.0      0.1834     0.002274    0.002344    320.9    648.9
+
+(Note: volumes are now fractional thanks to linear interpolation inside the crossing trade. Previously low-b values all reported exactly 15 because the first max-sized bet crossed both 5% and 10% thresholds. Bet sizes are min(15, max(2, balance*0.15*|edge|/0.2)) with skip if |edge|<0.03 — this is why the scale is ~15 and why we document it now.)
 
 Adaptive Results (short belief-market run)
 ------------------------------------------
@@ -779,20 +850,18 @@ the synthetic results.
 
 Key Findings (directly validate the learning)
 --------------------------------------------
-1. Low b (10-25) produces high volatility and slippage:
-   - Average per-trade price impact of 8–16.5 percentage points.
+1. Low b (1-10) produces extreme volatility and slippage:
+   - Average per-trade price impact of 16–50 percentage points (jumps of 0.3-0.5 are common).
+   - At b=1 the market essentially snaps to near-certainty on the first few trades.
    - Matches the observation: "setting it too low causes excessive
      price volatility and slippage".
+2. High b (400-1600) makes the market extremely sluggish:
+   - 10–40× more cumulative trading volume is required to achieve the same 5–10% price move (or the move is never achieved within reasonable activity).
+   - Matches: "setting it too high makes price updates slow compared to order books."
 
-2. High b (100-200) makes the market sluggish:
-   - 3–6× more cumulative volume is required to move the price 5–10%
-     compared with low/moderate b.
-   - Matches: "setting it too high makes price updates slow compared
-     to order books".
-
-3. Calibration (Brier score) is often best at moderate b (~25-50).
-   Very high b hurts forecaster scores because the market price barely
-   moves even when participants have strong, correct beliefs.
+3. Calibration (Brier score) suffers at both extremes:
+   - Best around moderate b (~25-50).
+   - Very low b (1-5) or very high b (800+) produce worse scores: low b because of over-reaction/noise amplification; high b because prices stay near 0.5 even when traders have strong, accurate beliefs around the true_p.
 
 4. Adaptive strategies (especially slower-growing ones such as
    LogVolumeB) provide a practical middle ground: they remain
