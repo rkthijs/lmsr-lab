@@ -68,7 +68,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 
 from src.lmsr import LMSRMarketSimulator, TradingAgent
-from src.lmsr.adaptive import BoundedB, LinearVolumeB, LogVolumeB
+from src.lmsr.adaptive import BoundedB, LinearVolumeB, LogVolumeB, SqrtVolumeB, TradeCountB
 from src.lmsr.scoring import ForecasterScores
 
 # Optional: for deep history analysis (parameter sensitivity on real data)
@@ -418,9 +418,15 @@ def parameter_sensitivity_analysis(
     # Adaptive strategies (for comparison)
     if also_adaptive:
         adaptive_strats = {
-            "Linear(alpha=0.06)": BoundedB(LinearVolumeB(alpha=0.06, min_b=8), min_b=8, max_b=400),
-            "Log(alpha=8)": BoundedB(LogVolumeB(alpha=8.0, min_b=8), min_b=8, max_b=400),
-            "Linear(alpha=0.12)": BoundedB(LinearVolumeB(alpha=0.12, min_b=8), min_b=8, max_b=400),
+            "Bounded(Linear α=0.03)": BoundedB(LinearVolumeB(alpha=0.03, min_b=5), min_b=5, max_b=500),
+            "Bounded(Linear α=0.06)": BoundedB(LinearVolumeB(alpha=0.06, min_b=8), min_b=8, max_b=400),
+            "Bounded(Linear α=0.12)": BoundedB(LinearVolumeB(alpha=0.12, min_b=8), min_b=8, max_b=400),
+            "Bounded(Linear α=0.25)": BoundedB(LinearVolumeB(alpha=0.25, min_b=10), min_b=10, max_b=350),
+            "Bounded(Sqrt α=0.05)": BoundedB(SqrtVolumeB(alpha=0.05, min_b=8), min_b=8, max_b=400),
+            "Bounded(Sqrt α=0.15)": BoundedB(SqrtVolumeB(alpha=0.15, min_b=8), min_b=8, max_b=400),
+            "Bounded(Log α=4)": BoundedB(LogVolumeB(alpha=4.0, min_b=8), min_b=8, max_b=400),
+            "Bounded(Log α=8)": BoundedB(LogVolumeB(alpha=8.0, min_b=8), min_b=8, max_b=400),
+            "Bounded(Log α=16)": BoundedB(LogVolumeB(alpha=16.0, min_b=8), min_b=8, max_b=400),
         }
 
         # Note: for simplicity we use Linear variants; LogVolumeB can be added similarly
@@ -750,6 +756,64 @@ def plot_b_sweep_price_paths(
         plt.close()
 
 
+def plot_adaptive_strategies(
+    results: dict[str, Any],
+    title: str = "LMSR Adaptive Liquidity Strategies (Price Paths)",
+    save_path: str | None = "examples/reports/lmsr_param_sens_adaptive.png",
+    show: bool = False,
+) -> None:
+    """Plot price paths for adaptive strategies only (separate from fixed b sweep).
+
+    Each adaptive strategy gets its own line (different colors/styles).
+    Useful to compare how different adaptive rules (Linear, Log, Sqrt, different alphas)
+    behave under the same noisy traders.
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not available — run `pip install matplotlib` to generate plots.")
+        return
+
+    adaptive = results.get("adaptive", {})
+    if not adaptive:
+        print("No adaptive strategies in results.")
+        return
+
+    plt.figure(figsize=(11, 6))
+
+    colors = plt.cm.tab10(range(len(adaptive)))  # nice distinct colors
+    for idx, (name, data) in enumerate(sorted(adaptive.items())):  # sort for consistent order
+        series = data.get("price_series", [])
+        if not series:
+            continue
+        steps = list(range(len(series)))
+        plt.plot(
+            steps, series,
+            linewidth=1.6, marker=".", markersize=2.5,
+            color=colors[idx % len(colors)],
+            label=name
+        )
+
+    plt.axhline(0.5, color="gray", linestyle=":", alpha=0.5, label="initial 50%")
+    plt.xlabel("Trade step (cumulative)")
+    plt.ylabel("P(Yes)")
+    plt.title(title)
+    plt.legend(loc="best", fontsize=8)
+    plt.grid(True, alpha=0.25)
+    plt.ylim(0, 1.05)
+    plt.tight_layout()
+
+    if save_path:
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"  Saved adaptive strategies plot → {save_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+
 def print_comparison_table(results: dict[str, Any]) -> None:
     """Pretty print a simple comparison of mean Brier scores."""
     print("\nFixed b results:")
@@ -798,12 +862,18 @@ def main() -> None:
     )
     print_parameter_sensitivity_table(sens)
 
-    # Visual extension for experiment #1 (price paths make the volatility vs sluggishness obvious)
-    plot_b_sweep_price_paths(sens)
+    # Visual extensions for experiment #1
+    # Separate plots: one for fixed b sweep (volatility vs sluggish), one for adaptives only
+    plot_b_sweep_price_paths(
+        sens,
+        save_path="examples/reports/lmsr_param_sens_fixed.png",
+        title="LMSR Price Path Sensitivity to Fixed Liquidity Parameter b"
+    )
+    plot_adaptive_strategies(sens)
 
     print("\n   Interpretation: Low b → high mean/max impact per trade (volatile, high slippage).")
     print("   High b → very large volume needed for 5-10% price move (sluggish updates).")
-    print("   Adaptive strategies typically sit between moderate fixed b values.")
+    print("   Adaptive strategies (see separate plot) provide a middle ground that adapts to volume.")
 
     print("\nDone. Import the functions to run your own sweeps or larger Monte Carlo studies.")
 

@@ -207,20 +207,30 @@ res = kelly_sensitivity_on_history("examples/trade_histories/kelly_high_activity
 
 ## Visualizations (New for #1)
 
-To make the "volatility vs. sluggish" effect obvious, a dedicated plotting helper was added:
+To make the "volatility vs. sluggish" effect obvious, two dedicated plotting helpers are now used:
 
 ```python
-from examples.experiments import parameter_sensitivity_analysis, plot_b_sweep_price_paths
+from examples.experiments import parameter_sensitivity_analysis, plot_b_sweep_price_paths, plot_adaptive_strategies
 sens = parameter_sensitivity_analysis(...)
-plot_b_sweep_price_paths(sens)   # saves PNG by default to reports/
+plot_b_sweep_price_paths(sens, save_path=".../lmsr_param_sens_fixed.png")
+plot_adaptive_strategies(sens, save_path=".../lmsr_param_sens_adaptive.png")
 ```
 
-![Price path sensitivity to b](lmsr_param_sens_price_paths.png)
+**Fixed b sweep plot** (volatility vs sluggishness across many b values):
 
-- Steep wiggly lines (low b): large per-trade moves, high slippage/volatility.
-- Nearly flat lines (high b): requires many more trades (volume) before price moves meaningfully.
+![Price path sensitivity to fixed b](lmsr_param_sens_fixed.png)
 
-The plot is automatically produced when running the experiments demo (saved to `examples/reports/lmsr_param_sens_price_paths.png`).
+**Separate adaptive strategies plot** (more strategies, side-by-side comparison):
+
+![Adaptive strategies price paths](lmsr_param_sens_adaptive.png)
+
+The plots are automatically produced when running `python examples/experiments.py` (section 4).
+
+We now include more adaptive strategies for richer comparison (different growth rates and families: Linear, Sqrt, Log with varying α):
+
+- Bounded(Linear α=0.03/0.06/0.12/0.25)
+- Bounded(Sqrt α=0.05/0.15)
+- Bounded(Log α=4/8/16)
 
 Future extensions (see sibling todos):
 - Monte Carlo over trader count / belief noise
@@ -230,9 +240,9 @@ Future extensions (see sibling todos):
 
 ## Files Changed / Related
 
-- `examples/experiments.py` — core implementation + documented results block + `plot_b_sweep_price_paths`
+- `examples/experiments.py` — core implementation + documented results block + `plot_b_sweep_price_paths` + `plot_adaptive_strategies` + expanded adaptive_strats
 - `examples/reports/lmsr_parameter_sensitivity.md` — this report
-- `examples/reports/lmsr_param_sens_price_paths.png` — new visual artifact
+- `examples/reports/lmsr_param_sens_fixed.png` and `lmsr_param_sens_adaptive.png` — separate visual artifacts
 - Related: `replay_history.py` (re-uses similar plotting style), `src/lmsr/adaptive.py`, deep histories in `trade_histories/`
 
 This is the first of the five key learnings to be turned into a runnable, documented experiment with supporting visuals. The others (Continuous Liquidity, Capital Efficiency, Scalability, Risk Management) have skeletons and are ready for the same treatment.
